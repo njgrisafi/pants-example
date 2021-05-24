@@ -31,7 +31,8 @@ async def wildcard_imports(
 ) -> WildcardImports:
     with wildcard_imports_subsystem.line_oriented(console) as print_stdout:
         sources = await Get(SourceFiles, SourceFilesRequest([tgt.get(Sources) for tgt in targets]))
-        print_stdout(sources.snapshot.digest)
+        for source_file in sources.snapshot.files:
+            print_stdout(source_file)
     return WildcardImports(exit_code=1)
 
 
