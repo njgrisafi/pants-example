@@ -1,9 +1,38 @@
 [GLOBAL]
-pants_version = "2.3.0rc2"
+pants_version = "2.5.0"
+print_stacktrace = true
+pythonpath = ["%(buildroot)s/pants-plugins"]
 backend_packages = [
   "pants.backend.python",
-  "pants.backend.python.mixed_interpreter_constraints"
+  "custom_black",
+  "custom_flake8",
+  "wildcard_imports"
 ]
 
-[python-setup]
-interpreter_constraints = ["CPython==2.7.*"]
+pants_ignore.add = [
+  "/.*"
+]
+
+[source]
+root_patterns = [
+  "/app",
+  "/pants-plugins"
+]
+
+[python-infer]
+inits = true
+string_imports = true
+
+[dependees]
+transitive = true
+closed = true
+
+[black]
+config = "pyproject.toml"
+version = "black==21.5b1"
+
+[flake8]
+config = "setup.cfg"
+
+[anonymous-telemetry]
+enabled = false

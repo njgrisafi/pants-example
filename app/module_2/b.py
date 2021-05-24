@@ -1,0 +1,4 @@
+from app.module_2.a import example_a
+
+def example_b() -> None:
+    print("example")
