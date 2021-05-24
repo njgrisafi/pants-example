@@ -7,7 +7,7 @@ from pants.engine.target import HydratedSources, HydrateSourcesRequest
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.fs import SpecsSnapshot
 
-# from pants.engine.fs import CreateDigest, Digest, FileContent
+from pants.engine.fs import Digest, DigestContents
 # from pants.engine.target import SourcesPathsRequest, SourcesPaths
 
 
@@ -30,9 +30,9 @@ async def wildcard_imports(
     console: Console, wildcard_imports_subsystem: WildcardImportsSubsystem, targets: Targets
 ) -> WildcardImports:
     with wildcard_imports_subsystem.line_oriented(console) as print_stdout:
-        sources = await Get(SourceFiles, SourceFilesRequest([tgt.get(Sources) for tgt in targets]))
-        for source_file in sources.snapshot.files:
-            print_stdout(source_file)
+        sources = await Get(SourceFiles, SourceFilesRequest([tgt.get(Sources) for tgt in targets], for_sources_types=(PythonSources,)))
+        digest_contents = await Get(DigestContents, Digest, sources.snapshot.digest)
+        print_stdout(digest_contents)
     return WildcardImports(exit_code=1)
 
 
