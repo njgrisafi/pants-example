@@ -5,7 +5,9 @@ from pants.engine.target import Sources, Targets
 from pants.engine.rules import Get
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 
-from pants.engine.fs import Digest, DigestContents
+from pants.engine.fs import Digest, DigestContents, FileContent
+
+import re
 
 
 from pants.backend.python.target_types import (
@@ -22,10 +24,17 @@ class WildcardImports(Goal):
     subsystem_cls = WildcardImportsSubsystem
 
 
+def has_wildcard_import(file_content: FileContent) -> bool:
+    import_backslash = re.compile(rb"from[ ]+(\S+)[ ]+import[ ]+[*][ ]*")
+    res = import_backslash.search(file_content.content)
+    return res is not None
+
+
 @goal_rule
 async def wildcard_imports(
     console: Console, wildcard_imports_subsystem: WildcardImportsSubsystem, targets: Targets
 ) -> WildcardImports:
+    # Get sources and contents
     sources = await Get(
         SourceFiles,
         SourceFilesRequest(
@@ -33,12 +42,20 @@ async def wildcard_imports(
         ),
     )
     digest_contents = await Get(DigestContents, Digest, sources.snapshot.digest)
-    with wildcard_imports_subsystem.line_oriented(console) as print_stdout:
-        print_stdout(digest_contents)
-    return WildcardImports(exit_code=1)
 
-def has_wildcard_import() -> bool:
-    ...
+    # Parse contents for 'import *' patterns
+    wildcard_import_sources = []
+    for file_content in digest_contents:
+        if has_wildcard_import(file_content):
+            wildcard_import_sources.append(file_content.path)
+
+    # Return result
+    if len(wildcard_import_sources) == 0:
+        return WildcardImports(exit_code=0)
+    with wildcard_imports_subsystem.line_oriented(console) as print_stdout:
+        for source in wildcard_import_sources:
+            print_stdout(source)
+    return WildcardImports(exit_code=1)
 
 
 def rules():
