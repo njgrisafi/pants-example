@@ -1,4 +1,4 @@
-from wildcard_imports import wildcard_imports
+from . import wildcard_imports
 
 
 def rules():
