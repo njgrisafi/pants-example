@@ -1,4 +1,4 @@
-from app.module_1 import example
+from module_1 import example
 
 
 def test_example():

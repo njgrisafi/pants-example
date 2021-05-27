@@ -1,4 +1,5 @@
+from module_common import *
 
 
 def example_a() -> None:
-    print("example")
+    printer("example")
