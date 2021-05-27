@@ -1,15 +1,15 @@
-import re
-from typing import Callable, List
+from typing import Callable, Iterable, List
 
 from pants.backend.python.target_types import PythonLibrary, PythonSources, PythonTests
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.console import Console
-from pants.engine.fs import Digest, DigestContents, FileContent
+from pants.engine.fs import Digest, DigestContents
 from pants.engine.goal import Goal, GoalSubsystem, LineOriented
-from pants.engine.rules import Get, collect_rules, goal_rule
+from pants.engine.rules import Get, Rule, collect_rules, goal_rule
 from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
 from pants.util.filtering import and_filters, create_filters
 
+from . import import_fixer_utils
 from .import_fixer import ImportFixerHandler
 
 
@@ -56,12 +56,6 @@ class WildcardImports(Goal):
     subsystem_cls = WildcardImportsSubsystem
 
 
-def has_wildcard_import(file_content: FileContent) -> bool:
-    import_backslash = re.compile(rb"from[ ]+(\S+)[ ]+import[ ]+[*][ ]*")
-    res = import_backslash.search(file_content.content)
-    return res is not None
-
-
 TargetFilter = Callable[[Target], bool]
 allowed_target_types = RegisteredTargetTypes.create({tgt_type for tgt_type in [PythonLibrary, PythonTests]})
 
@@ -90,12 +84,12 @@ async def wildcard_imports(
             [tgt.get(Sources) for tgt in filtered_targets], for_sources_types=(PythonSources,), enable_codegen=False
         ),
     )
-    digest_contents = await Get(DigestContents, Digest, sources.snapshot.digest)
+    digest_contents: DigestContents = await Get(DigestContents, Digest, sources.snapshot.digest)
 
     # Parse contents for 'import *' patterns
     wildcard_import_sources = []
     for file_content in digest_contents:
-        if has_wildcard_import(file_content):
+        if import_fixer_utils.has_wildcard_import(file_content.content):
             wildcard_import_sources.append(file_content.path)
 
     # No wild card imports!
@@ -119,5 +113,5 @@ async def wildcard_imports(
     return WildcardImports(exit_code=1)
 
 
-def rules():
+def rules() -> Iterable[Rule]:
     return collect_rules()

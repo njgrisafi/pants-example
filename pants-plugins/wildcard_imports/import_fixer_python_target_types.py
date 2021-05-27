@@ -1,8 +1,9 @@
 import ast
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List
+
+from . import import_fixer_utils
 
 
 @dataclass
@@ -22,7 +23,9 @@ class ImportTarget:
 
     @property
     def import_str(self) -> str:
-        return f"from {self.modules_str} import {', '.join(self.names)}"
+        if self.modules_str:
+            return f"from {self.modules_str} import {', '.join(self.names)}"
+        return f"import {', '.join(self.names)}"
 
     @property
     def modules_str(self) -> str:
@@ -53,36 +56,44 @@ class FileTarget:
     functions: List[FunctionTarget]
     constants: List[ConstantTarget]
 
-    @classmethod
-    def symbol_being_used_in_file(cls, symbol: str, path: Path) -> bool:
-        try:
-            return bool(re.search("\\b{}\\b".format(symbol), path.read_text()))
-        except Exception:
-            return False
+    @property
+    def file_content_bytes(self) -> bytes:
+        return Path(self.path).read_bytes()
 
-    def get_names_used_in_file_target(self, source_file_target: "FileTarget") -> List[str]:
+    @property
+    def file_content_str(self) -> str:
+        return Path(self.path).read_text()
+
+    def uses_import(self, import_str: str) -> bool:
+        for import_target in self.imports:
+            if import_target.import_str == import_str:
+                return True
+        return False
+
+    def get_names_used_by_file_target(self, source_file_target: "FileTarget") -> List[str]:
         names = []
+        file_content = source_file_target.file_content_str
         for class_target in self.classes:
-            if self.symbol_being_used_in_file(symbol=class_target.name, path=Path(source_file_target.path)):
+            if import_fixer_utils.has_symbol_usage(symbol=class_target.name, file_content=file_content):
                 names.append(class_target.name)
         for function_target in self.functions:
-            if self.symbol_being_used_in_file(symbol=function_target.name, path=Path(source_file_target.path)):
+            if import_fixer_utils.has_symbol_usage(symbol=function_target.name, file_content=file_content):
                 names.append(function_target.name)
         for constant_target in self.constants:
             for src_constant in source_file_target.constants:
                 if constant_target.name == src_constant.name:
                     break
             else:
-                if self.symbol_being_used_in_file(symbol=constant_target.name, path=Path(source_file_target.path)):
+                if import_fixer_utils.has_symbol_usage(symbol=constant_target.name, file_content=file_content):
                     names.append(constant_target.name)
         return names
 
-    def get_imports_used_in_file_target(self, source_file_target: "FileTarget") -> List[ImportTarget]:
+    def get_imports_used_by_file_target(self, source_file_target: "FileTarget") -> List[ImportTarget]:
         import_targets = []
         for import_target in self.imports:
             names_used = []
             for name in import_target.names:
-                if self.symbol_being_used_in_file(symbol=name, path=Path(source_file_target.path)):
+                if import_fixer_utils.has_symbol_usage(symbol=name, file_content=source_file_target.file_content_str):
                     names_used.append(name)
             if names_used:
                 import_targets.append(
