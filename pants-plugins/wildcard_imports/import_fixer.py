@@ -106,6 +106,7 @@ class ImportFixerHandler:
         )
 
         # Recurse on transitive 'import *' to find nested symbol usages
+        # TODO: Recursion is not a solution for performance on larger repos
         for transitive_import_target in transitive_file_target.imports:
             if transitive_import_target.is_star_import:
                 import_recommendations.extend(
