@@ -20,7 +20,6 @@ class PackageTargetHelper:
         return self.file_target_by_module[module_key]
 
     def get_module_star_import_file_targets(self, file_target: FileTarget) -> List[FileTarget]:
-        print(self.file_targets_by_import_star)
         return self.file_targets_by_import_star.get(f"from {file_target.module_key} import *", [])
 
 
