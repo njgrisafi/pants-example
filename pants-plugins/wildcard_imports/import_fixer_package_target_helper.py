@@ -59,5 +59,5 @@ def from_package_root(package_root: Path, include_top_level_package: bool) -> Pa
     return PackageTargetHelper(
         include_top_level_package=include_top_level_package,
         file_target_by_module=file_target_by_module,
-        file_targets_by_import_star=file_targets_by_import_star
+        file_targets_by_import_star=file_targets_by_import_star,
     )

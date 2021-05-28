@@ -23,7 +23,7 @@ class ImportFixerHandler:
             file_target = self.package_helper.get_file_target_from_python_file_path(file_path=target_path)
             file_targets_to_fix.append(file_target)
 
-        # Fix file targets
+        # Generate file target patches
         file_targets_patches = list(self.generate_file_targets_patches(file_targets=file_targets_to_fix))
 
         # Perform import patches for each file target
@@ -76,33 +76,33 @@ class ImportFixerHandler:
         source_file_target: FileTarget,
         star_import_target: ImportTarget,
     ) -> List[ImportTarget]:
+        visited = []
         import_recommendations = []
         stack = [star_import_target]
         while stack:
             import_target = stack.pop()
+            if import_target.modules_str in visited:
+                continue
+            visited.append(import_target.modules_str)
             try:
                 transitive_file_target = self.package_helper.file_target_by_module[import_target.modules_str]
-            except KeyError:
-                # Check for submodule usages
                 import_recommendations.extend(
-                    self.get_module_directory_import_targets_for_file_target(
-                        source_file_target=source_file_target,
-                        import_target=import_target,
+                    self.get_transitive_import_recommendations(
+                        source_file_target=source_file_target, transitive_file_target=transitive_file_target
                     )
                 )
-                continue
-
-            # Check usage of direct transitive file target names
-            names = transitive_file_target.get_names_used_by_file_target(source_file_target=source_file_target)
-            if names:
-                import_recommendations.append(
-                    ImportTarget(modules=transitive_file_target.module_key.split("."), level=0, names=names, aliases=[])
+            except KeyError:
+                # Check for submodule direct usages
+                import_recommendations.extend(
+                    self.get_submodule_import_recommendations_for_file_target(
+                        source_file_target=source_file_target,
+                        module_import_target=import_target,
+                    )
                 )
 
-            # Get usage of imports names from transitive file target
-            import_recommendations.extend(
-                transitive_file_target.get_imports_used_by_file_target(source_file_target=source_file_target)
-            )
+                # Queue all submodules for transitive checks
+                stack.extend(self.get_submodule_transitive_imports(module_import_target=import_target))
+                continue
 
             # iterate on transitive 'import *' to find nested symbol usages
             for transitive_import_target in transitive_file_target.imports:
@@ -110,7 +110,46 @@ class ImportFixerHandler:
                     stack.append(transitive_import_target)
         return import_recommendations
 
-    def get_module_directory_import_targets_for_file_target(
+    def get_transitive_import_recommendations(
+        self, source_file_target: FileTarget, transitive_file_target: FileTarget
+    ) -> List[ImportTarget]:
+        import_recommendations = []
+
+        # Check usage of direct transitive file target names
+        names = transitive_file_target.get_names_used_by_file_target(source_file_target=source_file_target)
+        if names:
+            import_recommendations.append(
+                ImportTarget(modules=transitive_file_target.module_key.split("."), level=0, names=names, aliases=[])
+            )
+
+        # Get usage of imports names from transitive file target
+        import_recommendations.extend(
+            transitive_file_target.get_imports_used_by_file_target(source_file_target=source_file_target)
+        )
+        return import_recommendations
+
+    def get_submodule_import_recommendations_for_file_target(
+        self, source_file_target: FileTarget, module_import_target: ImportTarget
+    ) -> List[ImportTarget]:
+        module_directory_import_targets = []
+        for module_key, file_target in self.package_helper.file_target_by_module.items():
+            symbol = file_target.module_key.split(".")[-1]
+            if module_import_target.modules_str in module_key and import_fixer_utils.has_symbol_usage(
+                symbol=symbol, file_content=source_file_target.file_content_str
+            ):
+                module_directory_import_targets.append(
+                    ImportTarget(modules=module_import_target.modules, level=0, names=[symbol], aliases=[])
+                )
+        return module_directory_import_targets
+
+    def get_submodule_transitive_imports(self, module_import_target: ImportTarget) -> List[ImportTarget]:
+        submodule_imports = []
+        for module_key in self.package_helper.file_target_by_module:
+            if module_import_target.modules_str in module_key:
+                submodule_imports.append(ImportTarget(modules=module_key.split("."), level=0, names=["*"], aliases=[]))
+        return submodule_imports
+
+    def get_module_directory_imports_recommendations_for_file_target(
         self, source_file_target: FileTarget, import_target: ImportTarget
     ) -> List[ImportTarget]:
         module_directory_import_targets = []
