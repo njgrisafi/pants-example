@@ -24,11 +24,7 @@ class ImportFixerHandler:
             file_targets_to_fix.append(file_target)
 
         # Fix file targets
-        file_paths_seen = []
         for file_target in file_targets_to_fix:
-            if file_target.path in file_paths_seen:
-                continue
-            file_paths_seen.append(file_target.path)
             for import_target in file_target.imports:
                 if import_target.is_star_import:
                     res = self.get_star_import_recommendation(
