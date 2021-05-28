@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List
+from typing import Iterable, List, Tuple
 
 from . import import_fixer_utils
 from .import_fixer_package_target_helper import from_package_root
@@ -24,7 +24,20 @@ class ImportFixerHandler:
             file_targets_to_fix.append(file_target)
 
         # Fix file targets
-        for file_target in file_targets_to_fix:
+        file_targets_patches = list(self.generate_file_targets_patches(file_targets=file_targets_to_fix))
+
+        # Perform import patches for each file target
+        for file_target_patch in file_targets_patches:
+            self.patch_import(
+                source_path=file_target_patch[0],
+                import_target=file_target_patch[1],
+                replacement_import_targets=file_target_patch[2],
+            )
+
+    def generate_file_targets_patches(
+        self, file_targets: List[FileTarget]
+    ) -> Iterable[Tuple[Path, ImportTarget, List[ImportTarget]]]:
+        for file_target in file_targets:
             for import_target in file_target.imports:
                 if import_target.is_star_import:
                     res = self.get_star_import_recommendation(
@@ -33,12 +46,10 @@ class ImportFixerHandler:
                     )
                     if len(res) == 0:
                         continue
-                    file_targets_patches.append(
-                        (
-                            Path(file_target.path),
-                            import_target,
-                            res,
-                        )
+                    yield (
+                        Path(file_target.path),
+                        import_target,
+                        res,
                     )
 
             # Update targets that import the current file target as a wildcard
@@ -54,21 +65,11 @@ class ImportFixerHandler:
                 )
                 if len(res) == 0:
                     continue
-                file_targets_patches.append(
-                    (
-                        Path(transitive_file_target.path),
-                        star_import_target,
-                        res,
-                    )
+                yield (
+                    Path(transitive_file_target.path),
+                    star_import_target,
+                    res,
                 )
-
-        # Perform import patches for each file target
-        for file_target_patch in file_targets_patches:
-            self.patch_import(
-                source_path=file_target_patch[0],
-                import_target=file_target_patch[1],
-                replacement_import_targets=file_target_patch[2],
-            )
 
     def get_star_import_recommendation(
         self,
@@ -106,7 +107,7 @@ class ImportFixerHandler:
             # iterate on transitive 'import *' to find nested symbol usages
             for transitive_import_target in transitive_file_target.imports:
                 if transitive_import_target.is_star_import:
-                    stack.append(import_target)
+                    stack.append(transitive_import_target)
         return import_recommendations
 
     def get_module_directory_import_targets_for_file_target(
