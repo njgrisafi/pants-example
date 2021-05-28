@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from . import import_fixer_utils
 from .import_fixer_package_target_helper import from_package_root
@@ -45,7 +45,7 @@ class ImportFixerHandler:
                         )
                     )
 
-            # Update targets that wildcard import the current file targets
+            # Update targets that import the current file target as a wildcard
             for transitive_file_target in self.package_helper.get_module_star_import_file_targets(
                 file_target=file_target
             ):

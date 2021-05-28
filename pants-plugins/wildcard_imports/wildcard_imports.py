@@ -69,7 +69,6 @@ async def wildcard_imports(
         if target_type not in allowed_target_types.aliases:
             raise UnrecognizedTargetTypeException(target_type, allowed_target_types)
         return lambda tgt: tgt.alias == target_type
-
     anded_filter: TargetFilter = and_filters(
         [
             *(create_filters(wildcard_imports_subsystem.target_types, filter_target_type)),
