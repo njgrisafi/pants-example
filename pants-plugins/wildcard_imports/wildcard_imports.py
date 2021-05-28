@@ -9,8 +9,7 @@ from pants.engine.rules import Get, Rule, collect_rules, goal_rule
 from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
 from pants.util.filtering import and_filters, create_filters
 
-from . import import_fixer_utils
-from .import_fixer import ImportFixerHandler
+from . import utils
 
 
 class WildcardImportsSubsystem(LineOriented, GoalSubsystem):
@@ -51,6 +50,10 @@ class WildcardImportsSubsystem(LineOriented, GoalSubsystem):
     def include_top_level_package(self) -> bool:
         return self.options.include_top_level_package
 
+    @property
+    def fix(self) -> bool:
+        return self.options.fix
+
 
 class WildcardImports(Goal):
     subsystem_cls = WildcardImportsSubsystem
@@ -88,22 +91,16 @@ async def wildcard_imports(
     # Parse contents for 'import *' patterns
     wildcard_import_sources = []
     for file_content in digest_contents:
-        if import_fixer_utils.has_wildcard_import(file_content.content):
+        if utils.has_wildcard_import(file_content.content):
             wildcard_import_sources.append(file_content.path)
 
     # No wild card imports!
     if len(wildcard_import_sources) == 0:
         return WildcardImports(exit_code=0)
 
-    # Apply import fixes
-    if wildcard_imports_subsystem.options.fix:
-        # TODO: Maybe read 'package_root' from pants somehow?
-        # Can also be configured from CLI args.
-        import_fixer = ImportFixerHandler(
-            package_root="app", include_top_level_package=wildcard_imports_subsystem.include_top_level_package
-        )
-        import_fixer.fix_targets(wildcard_import_sources)
-        return WildcardImports(exit_code=0)
+    # Perfrom fixes
+    if wildcard_imports_subsystem.fix:
+        pass
 
     # Output violating files and exit for failure
     with wildcard_imports_subsystem.line_oriented(console) as print_stdout:

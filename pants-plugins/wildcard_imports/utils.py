@@ -1,5 +1,6 @@
 import re
-from pathlib import Path
+
+match_import_star_re = re.compile(rb"from[ ]+(\S+)[ ]+import[ ]+[*][ ]*")
 
 
 def generate_relative_module_key(app_python_file_path: str, include_top_level_package: bool) -> str:
@@ -46,15 +47,4 @@ def has_symbol_usage(symbol: str, file_content: str) -> bool:
 
 
 def has_wildcard_import(file_content: bytes) -> bool:
-    match_import_star = re.compile(rb"from[ ]+(\S+)[ ]+import[ ]+[*][ ]*")
-    return bool(match_import_star.search(file_content))
-
-
-def get_all_python_files(package_root: Path):
-    result = []
-    for path in package_root.iterdir():
-        if path.is_dir():
-            result.extend(get_all_python_files(path))
-        elif path.is_file() and path.suffix == ".py":
-            result.append(path)
-    return result
+    return bool(match_import_star_re.search(file_content))
