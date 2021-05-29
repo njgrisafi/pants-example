@@ -8,10 +8,10 @@ from . import utils
 
 @dataclass(frozen=True)
 class PythonImport:
-    modules: Tuple[str]
-    level: Tuple[int]
-    names: Tuple[str]
-    aliases: Tuple[str]
+    modules: Tuple[str, ...]
+    level: Tuple[int, ...]
+    names: Tuple[str, ...]
+    aliases: Tuple[str, ...]
 
     @property
     def is_star_import(self) -> bool:
@@ -52,10 +52,10 @@ class PythonFileInfo:
     path: str
     file_content: bytes
     module_key: str
-    imports: Tuple[PythonImport]
-    classes: Tuple[PythonClass]
-    functions: Tuple[PythonFunction]
-    constants: Tuple[PythonConstant]
+    imports: Tuple[PythonImport, ...]
+    classes: Tuple[PythonClass, ...]
+    functions: Tuple[PythonFunction, ...]
+    constants: Tuple[PythonConstant, ...]
 
     @property
     def file_content_str(self) -> str:
@@ -67,7 +67,7 @@ class PythonFileInfo:
                 return True
         return False
 
-    def get_names_used_by_file_target(self, source_file_target: "PythonFileInfo") -> Tuple[str]:
+    def get_names_used_by_file_target(self, source_file_target: "PythonFileInfo") -> Tuple[str, ...]:
         names = []
         file_content = source_file_target.file_content_str
         for class_target in self.classes:
@@ -85,7 +85,7 @@ class PythonFileInfo:
                     names.append(constant_target.name)
         return tuple(names)
 
-    def get_imports_used_by_file_target(self, source_file_target: "PythonFileInfo") -> Tuple[PythonImport]:
+    def get_imports_used_by_file_target(self, source_file_target: "PythonFileInfo") -> Tuple[PythonImport, ...]:
         import_targets = []
         for import_target in self.imports:
             names_used = []

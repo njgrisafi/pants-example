@@ -12,14 +12,14 @@ from .python_package_helper import PythonPackageHelper
 @dataclass(frozen=True)
 class WildcardImportRecommendation:
     wildcard_import: PythonImport
-    recommendations: Tuple[PythonImport]
+    recommendations: Tuple[PythonImport, ...]
 
 
 @dataclass(frozen=True)
 class PythonFileImportRecommendations:
     python_file_info: PythonFileInfo
     wildcard_import_recommendations: Tuple[WildcardImportRecommendation]
-    transitive_import_recs: Tuple["PythonFileImportRecommendations"]
+    transitive_import_recs: Tuple["PythonFileImportRecommendations", ...]
 
     @property
     def fixed_file_content(self) -> FileContent:
@@ -94,7 +94,7 @@ class ImportFixerHandler:
         self,
         source_python_file_info: PythonFileInfo,
         python_wildcard_import: PythonImport,
-    ) -> Tuple[PythonImport]:
+    ) -> Tuple[PythonImport, ...]:
         visited = []
         import_recommendations: List[PythonImport] = []
         stack = [python_wildcard_import]
@@ -134,7 +134,7 @@ class ImportFixerHandler:
 
     def get_transitive_import_recommendations(
         self, source_python_file_info: PythonFileInfo, transitive_python_file_info: PythonFileInfo
-    ) -> Tuple[PythonImport]:
+    ) -> Tuple[PythonImport, ...]:
         import_recommendations = []
 
         # Check usage of direct transitive python file names
@@ -154,7 +154,7 @@ class ImportFixerHandler:
 
     def get_submodule_import_recommendations_for_python_file(
         self, source_python_file_info: PythonFileInfo, module_python_import: PythonImport
-    ) -> Tuple[PythonImport]:
+    ) -> Tuple[PythonImport, ...]:
         module_directory_python_imports = []
         for module_key, python_file_info in self.python_package_helper.python_file_info_by_module.items():
             symbol = python_file_info.module_key.split(".")[-1]

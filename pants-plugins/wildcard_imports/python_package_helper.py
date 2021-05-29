@@ -13,7 +13,7 @@ from .python_file_info import PythonFileInfo, PythonImport, from_python_file_pat
 class PythonPackageHelper:
     include_top_level_package: bool
     python_file_info_by_module: FrozenDict[str, PythonFileInfo]
-    python_file_info_by_import_star: FrozenDict[str, Tuple[PythonFileInfo]]
+    python_file_info_by_import_star: FrozenDict[str, Tuple[PythonFileInfo, ...]]
 
     def get_python_file_info_from_file_path(self, file_path: str) -> PythonFileInfo:
         module_key = utils.generate_relative_module_key(
@@ -23,7 +23,7 @@ class PythonPackageHelper:
 
     def get_transtive_python_files_by_wildcard_import(
         self, source_python_file_info: PythonFileInfo
-    ) -> Tuple[PythonFileInfo]:
+    ) -> Tuple[PythonFileInfo, ...]:
         return self.python_file_info_by_import_star.get(f"from {source_python_file_info.module_key} import *", [])
 
 
@@ -33,7 +33,7 @@ def unwind_relative_imports(file_target_by_module: Dict[str, PythonFileInfo]) ->
             current_import = file_target_by_module[module_key].imports[i]
             if current_import.is_absolute is False and current_import.modules is not None:
                 file_target_by_module[module_key].imports[i] = PythonImport(
-                    modules=module_key.split(".") + current_import.modules,
+                    modules=tuple(module_key.split(".")) + current_import.modules,
                     level=0,
                     names=current_import.names,
                     aliases=current_import.aliases,
@@ -58,7 +58,7 @@ def for_python_files(
     file_info_by_module = unwind_relative_imports(file_target_by_module=file_info_by_module)
 
     # Generate file_targets_by_import_star mapping
-    file_targets_by_import_star: Dict[str, Tuple[PythonFileInfo]] = defaultdict(tuple)
+    file_targets_by_import_star: Dict[str, Tuple[PythonFileInfo, ...]] = defaultdict(tuple)
     for file_target in file_info_by_module.values():
         for import_target in file_target.imports:
             if import_target.is_star_import:

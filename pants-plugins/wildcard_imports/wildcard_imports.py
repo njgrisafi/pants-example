@@ -109,7 +109,7 @@ async def wildcard_imports(
             python_files_digest_contents=all_py_files_digest_contents,
             include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
         )
-        import_recs: Tuple[Tuple[PythonFileImportRecommendations]] = await MultiGet(
+        import_recs: Tuple[PythonFileImportRecommendations, ...] = await MultiGet(
             Get(
                 PythonFileImportRecommendations,
                 PythonFileImportRecommendationsRequest,
