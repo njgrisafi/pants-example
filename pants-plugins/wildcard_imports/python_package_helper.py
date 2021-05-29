@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Dict, Tuple
 
 from pants.engine.fs import DigestContents
+from pants.util.frozendict import FrozenDict
 
 from . import utils
 from .python_file_info import PythonFileInfo, PythonImport, from_python_file_path
@@ -11,8 +12,8 @@ from .python_file_info import PythonFileInfo, PythonImport, from_python_file_pat
 @dataclass(frozen=True)
 class PythonPackageHelper:
     include_top_level_package: bool
-    python_file_info_by_module: Dict[str, PythonFileInfo]
-    python_file_info_by_import_star: Dict[str, Tuple[PythonFileInfo]]
+    python_file_info_by_module: FrozenDict[str, PythonFileInfo]
+    python_file_info_by_import_star: FrozenDict[str, Tuple[PythonFileInfo]]
 
     def get_python_file_info_from_file_path(self, file_path: str) -> PythonFileInfo:
         module_key = utils.generate_relative_module_key(
@@ -66,6 +67,6 @@ def for_python_files(
                 file_targets_by_import_star[import_target.import_str] = tuple(vals)
     return PythonPackageHelper(
         include_top_level_package=include_top_level_package,
-        python_file_info_by_module=file_info_by_module,
-        python_file_info_by_import_star=file_targets_by_import_star,
+        python_file_info_by_module=FrozenDict(file_info_by_module),
+        python_file_info_by_import_star=FrozenDict(file_targets_by_import_star),
     )
