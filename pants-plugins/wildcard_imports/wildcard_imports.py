@@ -1,4 +1,4 @@
-from typing import Callable, Iterable, List
+from typing import Callable, Iterable, List, Tuple
 
 from pants.backend.python.target_types import PythonLibrary, PythonSources, PythonTests
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
@@ -109,7 +109,7 @@ async def wildcard_imports(
             python_files_digest_contents=all_py_files_digest_contents,
             include_top_level_package=wildcard_imports_subsystem.include_top_level_package
         )
-        import_recs = await MultiGet(
+        import_recs: Tuple[Tuple[PythonFileImportRecommendations]] = await MultiGet(
             Get(
                 PythonFileImportRecommendations,
                 PythonFileImportRecommendationsRequest,
@@ -117,7 +117,10 @@ async def wildcard_imports(
             )
             for fp in wildcard_import_sources
         )
-        print(import_recs)
+        for import_rec in import_recs:
+            print(import_rec.fixed_content)
+            for transitive_rec in import_rec.transitive_import_recs:
+                print(transitive_rec.fixed_content)
         return WildcardImports(exit_code=0)
 
     # Output violating files and exit for failure

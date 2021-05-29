@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Tuple
 
 from pants.engine.rules import Rule, collect_rules, rule
 
@@ -20,7 +20,7 @@ class PythonFileImportRecommendationsRequest:
 
 @rule(desc="Gets imports * recommendations for a python target")
 async def get_file_import_recommendations(
-    py_file_import_recommendations_req: PythonFileImportRecommendationsRequest
+    py_file_import_recommendations_req: PythonFileImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
     return ImportFixerHandler(
         python_package_helper=py_file_import_recommendations_req.python_package_helper

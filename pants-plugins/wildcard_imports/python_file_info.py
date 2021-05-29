@@ -1,5 +1,6 @@
 import ast
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterator, Tuple
 
 from . import utils
@@ -14,7 +15,7 @@ class PythonImport:
 
     @property
     def is_star_import(self) -> bool:
-        return self.names == ["*"]
+        return self.names == ("*",)
 
     @property
     def is_absolute(self) -> bool:
@@ -56,6 +57,10 @@ class PythonFileInfo:
     functions: Tuple[PythonFunction]
     constants: Tuple[PythonConstant]
 
+    @property
+    def file_content_str(self) -> str:
+        return self.file_content.decode(encoding="utf-8")
+
     def uses_import(self, import_str: str) -> bool:
         for import_target in self.imports:
             if import_target.import_str == import_str:
@@ -64,7 +69,7 @@ class PythonFileInfo:
 
     def get_names_used_by_file_target(self, source_file_target: "PythonFileInfo") -> Tuple[str]:
         names = []
-        file_content = source_file_target.file_content
+        file_content = source_file_target.file_content_str
         for class_target in self.classes:
             if utils.has_symbol_usage(symbol=class_target.name, file_content=file_content):
                 names.append(class_target.name)
@@ -85,7 +90,7 @@ class PythonFileInfo:
         for import_target in self.imports:
             names_used = []
             for name in import_target.names:
-                if utils.has_symbol_usage(symbol=name, file_content=source_file_target.file_content):
+                if utils.has_symbol_usage(symbol=name, file_content=source_file_target.file_content_str):
                     names_used.append(name)
             if names_used:
                 import_targets.append(
@@ -138,9 +143,7 @@ def get_imports_from_ast_node(node: ast.Module) -> Iterator[PythonImport]:
         else:
             continue
         for n in node.names:
-            yield PythonImport(
-                modules=tuple(module), level=level, names=tuple(n.name.split(".")), aliases=(n.asname,)
-            )
+            yield PythonImport(modules=tuple(module), level=level, names=tuple(n.name.split(".")), aliases=(n.asname,))
 
 
 def from_python_file_path(file_path: str, file_content: bytes, module_key: str) -> PythonFileInfo:

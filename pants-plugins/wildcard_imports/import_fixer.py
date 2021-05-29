@@ -1,5 +1,5 @@
+import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Iterable, List, Tuple
 
 from . import utils
@@ -17,6 +17,18 @@ class WildcardImportRecommendation:
 class PythonFileImportRecommendations:
     python_file_info: PythonFileInfo
     wildcard_import_recommendations: Tuple[WildcardImportRecommendation]
+    transitive_import_recs: Tuple["PythonFileImportRecommendations"]
+
+    @property
+    def fixed_content(self) -> str:
+        content = self.python_file_info.file_content_str
+        for import_rec in self.wildcard_import_recommendations:
+            regex_str = import_rec.wildcard_import.import_str.replace("*", "\*")  # noqa: W605
+            replacement_import_strs = set()
+            for replacement_import_target in import_rec.recommendations:
+                replacement_import_strs.add(replacement_import_target.import_str)
+            content = re.sub(regex_str, "\n".join(replacement_import_strs), content)
+        return content
 
 
 class ImportFixerHandler:
@@ -29,11 +41,14 @@ class ImportFixerHandler:
         return PythonFileImportRecommendations(
             python_file_info=python_file_info,
             wildcard_import_recommendations=tuple(
-                self.generate_python_file_import_recommendations(python_file_info=python_file_info)
+                self.generate_python_wildcard_import_recommendations(python_file_info=python_file_info)
+            ),
+            transitive_import_recs=tuple(
+                self.generate_transitive_python_file_import_recommendations(python_file_info=python_file_info)
             ),
         )
 
-    def generate_python_file_import_recommendations(
+    def generate_python_wildcard_import_recommendations(
         self, python_file_info: PythonFileInfo
     ) -> Iterable[WildcardImportRecommendation]:
         for python_import in python_file_info.imports:
@@ -46,24 +61,29 @@ class ImportFixerHandler:
                     continue
                 yield WildcardImportRecommendation(wildcard_import=python_import, recommendations=recs)
 
-            # Update python files that import the current python file via a wildcard import
-            for transitive_python_file in self.python_package_helper.get_transtive_python_files_by_wildcard_import(
-                source_python_file_info=python_file_info
-            ):
-                star_import_target = PythonImport(
-                    modules=python_file_info.module_key.split("."), level=0, names=["*"], aliases=[]
-                )
-                res = self.get_star_import_recommendation(
-                    source_python_file_info=transitive_python_file,
-                    python_wildcard_import=star_import_target,
-                )
-                if len(res) == 0:
-                    continue
-                yield (
-                    Path(transitive_python_file.path),
-                    star_import_target,
-                    res,
-                )
+    def generate_transitive_python_file_import_recommendations(
+        self, python_file_info: PythonFileInfo
+    ) -> Iterable[PythonFileImportRecommendations]:
+        # Update python files that import the current python file via a wildcard import
+        for transitive_python_file in self.python_package_helper.get_transtive_python_files_by_wildcard_import(
+            source_python_file_info=python_file_info
+        ):
+            star_import_target = PythonImport(
+                modules=tuple(python_file_info.module_key.split(".")), level=0, names=("*",), aliases=()
+            )
+            recs = self.get_star_import_recommendation(
+                source_python_file_info=transitive_python_file,
+                python_wildcard_import=star_import_target,
+            )
+            if len(recs) == 0:
+                continue
+            yield PythonFileImportRecommendations(
+                python_file_info=transitive_python_file,
+                wildcard_import_recommendations=(
+                    WildcardImportRecommendation(wildcard_import=star_import_target, recommendations=recs),
+                ),
+                transitive_import_recs=(),
+            )
 
     def get_star_import_recommendation(
         self,
@@ -79,7 +99,9 @@ class ImportFixerHandler:
                 continue
             visited.append(import_target.modules_str)
             try:
-                transitive_python_file_info = self.package_helper.python_file_info_by_module[import_target.modules_str]
+                transitive_python_file_info = self.python_package_helper.python_file_info_by_module[
+                    import_target.modules_str
+                ]
                 import_recommendations.extend(
                     self.get_transitive_import_recommendations(
                         source_python_file_info=source_python_file_info,
@@ -129,7 +151,7 @@ class ImportFixerHandler:
         self, source_python_file_info: PythonFileInfo, module_python_import: PythonImport
     ) -> Tuple[PythonImport]:
         module_directory_python_imports = []
-        for module_key, python_file_info in self.package_helper.python_file_info_by_module.items():
+        for module_key, python_file_info in self.python_package_helper.python_file_info_by_module.items():
             symbol = python_file_info.module_key.split(".")[-1]
             if module_python_import.modules_str in module_key and utils.has_symbol_usage(
                 symbol=symbol, file_content=source_python_file_info.file_content_str
@@ -141,7 +163,7 @@ class ImportFixerHandler:
 
     def get_submodule_transitive_imports(self, module_python_import: PythonImport) -> List[PythonImport]:
         submodule_python_imports = []
-        for module_key in self.package_helper.python_file_info_by_module:
+        for module_key in self.python_package_helper.python_file_info_by_module:
             if module_python_import.modules_str in module_key:
                 submodule_python_imports.append(
                     PythonImport(modules=tuple(module_key.split(".")), level=0, names=("*",), aliases=())
@@ -152,7 +174,7 @@ class ImportFixerHandler:
         self, source_python_file_info: PythonFileInfo, module_python_import: PythonImport
     ) -> List[PythonImport]:
         module_directory_import_targets = []
-        for module_key, python_file_info in self.package_helper.python_file_info_by_module.items():
+        for module_key, python_file_info in self.python_package_helper.python_file_info_by_module.items():
             symbol = python_file_info.module_key.split(".")[-1]
             if module_python_import.modules_str in module_key and utils.has_symbol_usage(
                 symbol=symbol, file_content=source_python_file_info.file_content_str
