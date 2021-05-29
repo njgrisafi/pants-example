@@ -65,6 +65,7 @@ def for_python_files(
                 vals = list(file_targets_by_import_star[import_target.import_str])
                 vals.append(file_target)
                 file_targets_by_import_star[import_target.import_str] = tuple(vals)
+    print(file_targets_by_import_star)
     return PythonPackageHelper(
         include_top_level_package=include_top_level_package,
         python_file_info_by_module=FrozenDict(file_info_by_module),

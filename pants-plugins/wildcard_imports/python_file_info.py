@@ -78,7 +78,7 @@ class PythonFileInfo:
             else:
                 if utils.has_symbol_usage(symbol=constant_target.name, file_content=file_content):
                     names.append(constant_target.name)
-        return names
+        return tuple(names)
 
     def get_imports_used_by_file_target(self, source_file_target: "PythonFileInfo") -> Tuple[PythonImport]:
         import_targets = []
@@ -89,9 +89,11 @@ class PythonFileInfo:
                     names_used.append(name)
             if names_used:
                 import_targets.append(
-                    PythonImport(modules=import_target.modules, level=import_target.level, names=names_used, aliases=[])
+                    PythonImport(
+                        modules=import_target.modules, level=import_target.level, names=tuple(names_used), aliases=()
+                    )
                 )
-        return import_targets
+        return tuple(import_targets)
 
 
 def get_classes_from_ast_node(node: ast.Module) -> Iterator[PythonClass]:
@@ -118,11 +120,11 @@ def get_imports_from_ast_node(node: ast.Module) -> Iterator[PythonImport]:
     for node in ast.iter_child_nodes(node):
         # Handle Class and Function AST
         if isinstance(node, ast.ClassDef):
-            results = list(get_imports_from_ast_node(node))
+            results = tuple(get_imports_from_ast_node(node))
             for result in results:
                 yield result
         elif isinstance(node, ast.FunctionDef):
-            results = list(get_imports_from_ast_node(node))
+            results = tuple(get_imports_from_ast_node(node))
             for result in results:
                 yield result
 
@@ -136,7 +138,9 @@ def get_imports_from_ast_node(node: ast.Module) -> Iterator[PythonImport]:
         else:
             continue
         for n in node.names:
-            yield PythonImport(modules=module, level=level, names=n.name.split("."), aliases=n.asname)
+            yield PythonImport(
+                modules=tuple(module), level=level, names=tuple(n.name.split(".")), aliases=(n.asname,)
+            )
 
 
 def from_python_file_path(file_path: str, file_content: bytes, module_key: str) -> PythonFileInfo:

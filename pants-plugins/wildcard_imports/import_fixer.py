@@ -115,7 +115,7 @@ class ImportFixerHandler:
         if names:
             import_recommendations.append(
                 PythonImport(
-                    modules=transitive_python_file_info.module_key.split("."), level=0, names=names, aliases=[]
+                    modules=tuple(transitive_python_file_info.module_key.split(".")), level=0, names=names, aliases=()
                 )
             )
 
@@ -135,7 +135,7 @@ class ImportFixerHandler:
                 symbol=symbol, file_content=source_python_file_info.file_content_str
             ):
                 module_directory_python_imports.append(
-                    PythonImport(modules=module_python_import.modules, level=0, names=[symbol], aliases=[])
+                    PythonImport(modules=module_python_import.modules, level=0, names=(symbol,), aliases=())
                 )
         return module_directory_python_imports
 
@@ -144,7 +144,7 @@ class ImportFixerHandler:
         for module_key in self.package_helper.python_file_info_by_module:
             if module_python_import.modules_str in module_key:
                 submodule_python_imports.append(
-                    PythonImport(modules=module_key.split("."), level=0, names=["*"], aliases=[])
+                    PythonImport(modules=tuple(module_key.split(".")), level=0, names=("*",), aliases=())
                 )
         return submodule_python_imports
 
@@ -158,6 +158,6 @@ class ImportFixerHandler:
                 symbol=symbol, file_content=source_python_file_info.file_content_str
             ):
                 module_directory_import_targets.append(
-                    PythonImport(modules=module_python_import.modules, level=0, names=[symbol], aliases=[])
+                    PythonImport(modules=module_python_import.modules, level=0, names=(symbol,), aliases=())
                 )
         return module_directory_import_targets
