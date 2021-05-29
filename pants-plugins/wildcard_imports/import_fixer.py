@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
-from . import import_fixer_utils
+from . import utils
 from .python_file_info import PythonFileInfo, PythonImport
 from .python_package_helper import PythonPackageHelper
 
@@ -131,7 +131,7 @@ class ImportFixerHandler:
         module_directory_python_imports = []
         for module_key, python_file_info in self.package_helper.python_file_info_by_module.items():
             symbol = python_file_info.module_key.split(".")[-1]
-            if module_python_import.modules_str in module_key and import_fixer_utils.has_symbol_usage(
+            if module_python_import.modules_str in module_key and utils.has_symbol_usage(
                 symbol=symbol, file_content=source_python_file_info.file_content_str
             ):
                 module_directory_python_imports.append(
@@ -154,7 +154,7 @@ class ImportFixerHandler:
         module_directory_import_targets = []
         for module_key, python_file_info in self.package_helper.python_file_info_by_module.items():
             symbol = python_file_info.module_key.split(".")[-1]
-            if module_python_import.modules_str in module_key and import_fixer_utils.has_symbol_usage(
+            if module_python_import.modules_str in module_key and utils.has_symbol_usage(
                 symbol=symbol, file_content=source_python_file_info.file_content_str
             ):
                 module_directory_import_targets.append(

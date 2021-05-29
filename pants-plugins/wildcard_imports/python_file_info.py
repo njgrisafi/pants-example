@@ -2,7 +2,7 @@ import ast
 from dataclasses import dataclass
 from typing import Iterator, Tuple
 
-from . import import_fixer_utils
+from . import utils
 
 
 @dataclass(frozen=True)
@@ -49,7 +49,7 @@ class PythonConstant:
 @dataclass(frozen=True)
 class PythonFileInfo:
     path: str
-    file_contents: bytes
+    file_content: bytes
     module_key: str
     imports: Tuple[PythonImport]
     classes: Tuple[PythonClass]
@@ -64,19 +64,19 @@ class PythonFileInfo:
 
     def get_names_used_by_file_target(self, source_file_target: "PythonFileInfo") -> Tuple[str]:
         names = []
-        file_contents = source_file_target.file_contents
+        file_content = source_file_target.file_content
         for class_target in self.classes:
-            if import_fixer_utils.has_symbol_usage(symbol=class_target.name, file_content=file_contents):
+            if utils.has_symbol_usage(symbol=class_target.name, file_content=file_content):
                 names.append(class_target.name)
         for function_target in self.functions:
-            if import_fixer_utils.has_symbol_usage(symbol=function_target.name, file_content=file_contents):
+            if utils.has_symbol_usage(symbol=function_target.name, file_content=file_content):
                 names.append(function_target.name)
         for constant_target in self.constants:
             for src_constant in source_file_target.constants:
                 if constant_target.name == src_constant.name:
                     break
             else:
-                if import_fixer_utils.has_symbol_usage(symbol=constant_target.name, file_content=file_contents):
+                if utils.has_symbol_usage(symbol=constant_target.name, file_content=file_content):
                     names.append(constant_target.name)
         return names
 
@@ -85,7 +85,7 @@ class PythonFileInfo:
         for import_target in self.imports:
             names_used = []
             for name in import_target.names:
-                if import_fixer_utils.has_symbol_usage(symbol=name, file_content=source_file_target.file_contents):
+                if utils.has_symbol_usage(symbol=name, file_content=source_file_target.file_content):
                     names_used.append(name)
             if names_used:
                 import_targets.append(
@@ -139,11 +139,11 @@ def get_imports_from_ast_node(node: ast.Module) -> Iterator[PythonImport]:
             yield PythonImport(modules=module, level=level, names=n.name.split("."), aliases=n.asname)
 
 
-def from_python_file_path(file_path: str, file_contents: bytes, module_key: str) -> PythonFileInfo:
-    root_node = ast.parse(file_contents, file_path)
+def from_python_file_path(file_path: str, file_content: bytes, module_key: str) -> PythonFileInfo:
+    root_node = ast.parse(file_content, file_path)
     return PythonFileInfo(
         path=str(file_path),
-        file_contents=file_contents,
+        file_content=file_content,
         module_key=module_key,
         imports=tuple(get_imports_from_ast_node(node=root_node)),
         classes=tuple(get_classes_from_ast_node(node=root_node)),

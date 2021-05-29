@@ -1,9 +1,10 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, Tuple
 
-from . import import_fixer_utils
+from pants.engine.fs import DigestContents
+
+from . import utils
 from .python_file_info import PythonFileInfo, PythonImport, from_python_file_path
 
 
@@ -14,7 +15,7 @@ class PythonPackageHelper:
     python_file_info_by_import_star: Dict[str, Tuple[PythonFileInfo]]
 
     def get_python_file_info_from_file_path(self, file_path: str) -> PythonFileInfo:
-        module_key = import_fixer_utils.generate_relative_module_key(
+        module_key = utils.generate_relative_module_key(
             app_python_file_path=file_path, include_top_level_package=self.include_top_level_package
         )
         return self.python_file_info_by_module[module_key]
@@ -39,14 +40,17 @@ def unwind_relative_imports(file_target_by_module: Dict[str, PythonFileInfo]) ->
     return file_target_by_module
 
 
-def from_package_root(package_root: Path, include_top_level_package: bool) -> PythonPackageHelper:
+def for_python_files(
+    python_files_digest_contents: DigestContents, include_top_level_package: bool
+) -> PythonPackageHelper:
     # Generate file_target_by_module mapping and normalize relative imports
     file_info_by_module: Dict[str, PythonFileInfo] = {}
-    for file_path in import_fixer_utils.get_all_python_files(package_root):
+    for file_content in python_files_digest_contents:
         result_file_info = from_python_file_path(
-            file_path=file_path,
-            module_key=import_fixer_utils.generate_relative_module_key(
-                app_python_file_path=str(file_path), include_top_level_package=include_top_level_package
+            file_path=file_content.path,
+            file_content=file_content.content,
+            module_key=utils.generate_relative_module_key(
+                app_python_file_path=file_content.path, include_top_level_package=include_top_level_package
             ),
         )
         file_info_by_module[result_file_info.module_key] = result_file_info
@@ -57,7 +61,9 @@ def from_package_root(package_root: Path, include_top_level_package: bool) -> Py
     for file_target in file_info_by_module.values():
         for import_target in file_target.imports:
             if import_target.is_star_import:
-                file_targets_by_import_star[import_target.import_str].add(file_target)
+                vals = list(file_targets_by_import_star[import_target.import_str])
+                vals.append(file_target)
+                file_targets_by_import_star[import_target.import_str] = tuple(vals)
     return PythonPackageHelper(
         include_top_level_package=include_top_level_package,
         python_file_info_by_module=file_info_by_module,

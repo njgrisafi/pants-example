@@ -3,13 +3,16 @@ from typing import Callable, Iterable, List
 from pants.backend.python.target_types import PythonLibrary, PythonSources, PythonTests
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.console import Console
-from pants.engine.fs import Digest, DigestContents
+from pants.engine.fs import Digest, DigestContents, PathGlobs
 from pants.engine.goal import Goal, GoalSubsystem, LineOriented
-from pants.engine.rules import Get, Rule, collect_rules, goal_rule
+from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
 from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
 from pants.util.filtering import and_filters, create_filters
 
 from . import utils
+from .import_fixer import PythonFileImportRecommendations
+from .python_package_helper import for_python_files
+from .wildcard_import_rules import PythonFileImportRecommendationsRequest
 
 
 class WildcardImportsSubsystem(LineOriented, GoalSubsystem):
@@ -72,6 +75,7 @@ async def wildcard_imports(
         if target_type not in allowed_target_types.aliases:
             raise UnrecognizedTargetTypeException(target_type, allowed_target_types)
         return lambda tgt: tgt.alias == target_type
+
     anded_filter: TargetFilter = and_filters(
         [
             *(create_filters(wildcard_imports_subsystem.target_types, filter_target_type)),
@@ -98,9 +102,23 @@ async def wildcard_imports(
     if len(wildcard_import_sources) == 0:
         return WildcardImports(exit_code=0)
 
-    # Perfrom fixes
+    # Perform fixes
     if wildcard_imports_subsystem.fix:
-        pass
+        all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
+        py_package_helper = for_python_files(
+            python_files_digest_contents=all_py_files_digest_contents,
+            include_top_level_package=wildcard_imports_subsystem.include_top_level_package
+        )
+        # import_recs = await MultiGet(
+        #     Get(
+        #         PythonFileImportRecommendations,
+        #         PythonFileImportRecommendationsRequest,
+        #         PythonFileImportRecommendationsRequest(file_path=fp, python_package_helper=py_package_helper),
+        #     )
+        #     for fp in wildcard_import_sources
+        # )
+        # print(import_recs)
+        return WildcardImports(exit_code=0)
 
     # Output violating files and exit for failure
     with wildcard_imports_subsystem.line_oriented(console) as print_stdout:
