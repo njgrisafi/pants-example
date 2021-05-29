@@ -30,13 +30,24 @@ class PythonPackageHelper:
 def unwind_relative_imports(file_target_by_module: Dict[str, PythonFileInfo]) -> Dict[str, PythonFileInfo]:
     for module_key in file_target_by_module:
         for i in range(len(file_target_by_module[module_key].imports)):
-            current_import = file_target_by_module[module_key].imports[i]
+            existing_file_info = file_target_by_module[module_key]
+            current_import = existing_file_info.imports[i]
             if current_import.is_absolute is False and current_import.modules is not None:
-                file_target_by_module[module_key].imports[i] = PythonImport(
+                fixed_file_info_imports = list(file_target_by_module[module_key].imports)
+                fixed_file_info_imports[i] = PythonImport(
                     modules=tuple(module_key.split(".")) + current_import.modules,
                     level=0,
-                    names=current_import.names,
+                    names=current_import.names_list,
                     aliases=current_import.aliases,
+                )
+                file_target_by_module[module_key] = PythonFileInfo(
+                    path=existing_file_info.path,
+                    file_content=existing_file_info.file_content,
+                    module_key=existing_file_info.module_key,
+                    imports=tuple(fixed_file_info_imports),
+                    classes=existing_file_info.classes,
+                    functions=existing_file_info.functions,
+                    constants=existing_file_info.constants
                 )
     return file_target_by_module
 
