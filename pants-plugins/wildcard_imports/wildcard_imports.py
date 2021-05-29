@@ -109,15 +109,15 @@ async def wildcard_imports(
             python_files_digest_contents=all_py_files_digest_contents,
             include_top_level_package=wildcard_imports_subsystem.include_top_level_package
         )
-        # import_recs = await MultiGet(
-        #     Get(
-        #         PythonFileImportRecommendations,
-        #         PythonFileImportRecommendationsRequest,
-        #         PythonFileImportRecommendationsRequest(file_path=fp, python_package_helper=py_package_helper),
-        #     )
-        #     for fp in wildcard_import_sources
-        # )
-        # print(import_recs)
+        import_recs = await MultiGet(
+            Get(
+                PythonFileImportRecommendations,
+                PythonFileImportRecommendationsRequest,
+                PythonFileImportRecommendationsRequest(file_path=fp, python_package_helper=py_package_helper),
+            )
+            for fp in wildcard_import_sources
+        )
+        print(import_recs)
         return WildcardImports(exit_code=0)
 
     # Output violating files and exit for failure
