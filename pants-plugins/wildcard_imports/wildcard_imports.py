@@ -3,7 +3,7 @@ from typing import Callable, Iterable, List, Tuple
 from pants.backend.python.target_types import PythonLibrary, PythonSources, PythonTests
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.console import Console
-from pants.engine.fs import Digest, DigestContents, PathGlobs
+from pants.engine.fs import CreateDigest, Digest, DigestContents, PathGlobs, Workspace
 from pants.engine.goal import Goal, GoalSubsystem, LineOriented
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
 from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
@@ -68,7 +68,7 @@ allowed_target_types = RegisteredTargetTypes.create({tgt_type for tgt_type in [P
 
 @goal_rule
 async def wildcard_imports(
-    console: Console, wildcard_imports_subsystem: WildcardImportsSubsystem, targets: Targets
+    console: Console, wildcard_imports_subsystem: WildcardImportsSubsystem, targets: Targets, workspace: Workspace
 ) -> WildcardImports:
     # Filter target types
     def filter_target_type(target_type: str) -> TargetFilter:
@@ -107,7 +107,7 @@ async def wildcard_imports(
         all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
         py_package_helper = for_python_files(
             python_files_digest_contents=all_py_files_digest_contents,
-            include_top_level_package=wildcard_imports_subsystem.include_top_level_package
+            include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
         )
         import_recs: Tuple[Tuple[PythonFileImportRecommendations]] = await MultiGet(
             Get(
@@ -117,10 +117,12 @@ async def wildcard_imports(
             )
             for fp in wildcard_import_sources
         )
+        all_import_recs: List[PythonFileImportRecommendations] = []
         for import_rec in import_recs:
-            print(import_rec.fixed_content)
-            for transitive_rec in import_rec.transitive_import_recs:
-                print(transitive_rec.fixed_content)
+            all_import_recs.append(import_rec)
+            all_import_recs.extend(list(import_rec.transitive_import_recs))
+        digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in all_import_recs]))
+        workspace.write_digest(digest)
         return WildcardImports(exit_code=0)
 
     # Output violating files and exit for failure

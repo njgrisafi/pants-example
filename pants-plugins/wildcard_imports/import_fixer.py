@@ -2,6 +2,8 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, List, Tuple
 
+from pants.engine.fs import FileContent
+
 from . import utils
 from .python_file_info import PythonFileInfo, PythonImport
 from .python_package_helper import PythonPackageHelper
@@ -20,7 +22,7 @@ class PythonFileImportRecommendations:
     transitive_import_recs: Tuple["PythonFileImportRecommendations"]
 
     @property
-    def fixed_content(self) -> str:
+    def fixed_file_content(self) -> FileContent:
         content = self.python_file_info.file_content_str
         for import_rec in self.wildcard_import_recommendations:
             regex_str = import_rec.wildcard_import.import_str.replace("*", "\*")  # noqa: W605
@@ -28,7 +30,10 @@ class PythonFileImportRecommendations:
             for replacement_import_target in import_rec.recommendations:
                 replacement_import_strs.add(replacement_import_target.import_str)
             content = re.sub(regex_str, "\n".join(replacement_import_strs), content)
-        return content
+        return FileContent(
+            path=self.python_file_info.path,
+            content=content.encode()
+        )
 
 
 class ImportFixerHandler:
