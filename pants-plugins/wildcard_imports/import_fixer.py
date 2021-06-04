@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Iterable, List, Tuple
+from typing import List, Tuple
 
 from pants.engine.fs import FileContent
 
@@ -10,85 +10,52 @@ from .python_package_helper import PythonPackageHelper
 
 
 @dataclass(frozen=True)
-class WildcardImportRecommendation:
-    wildcard_import: PythonImport
+class PythonImportRecommendation:
+    source_import: PythonImport
     recommendations: Tuple[PythonImport, ...]
 
 
 @dataclass(frozen=True)
 class PythonFileImportRecommendations:
     python_file_info: PythonFileInfo
-    wildcard_import_recommendations: Tuple[WildcardImportRecommendation]
-    transitive_import_recs: Tuple["PythonFileImportRecommendations", ...]
+    import_recommendations: Tuple[PythonImportRecommendation, ...]
 
     @property
     def fixed_file_content(self) -> FileContent:
         content = self.python_file_info.file_content_str
-        for import_rec in self.wildcard_import_recommendations:
-            regex_str = import_rec.wildcard_import.import_str.replace("*", "\*")  # noqa: W605
-            replacement_import_strs = set()
-            for replacement_import_target in import_rec.recommendations:
-                replacement_import_strs.add(replacement_import_target.import_str)
-            content = re.sub(regex_str, "\n".join(replacement_import_strs), content)
-        return FileContent(
-            path=self.python_file_info.path,
-            content=content.encode()
-        )
+        for import_rec in self.import_recommendations:
+            regex_str = import_rec.source_import.import_str.replace("*", "\*")  # noqa: W605
+            if len(import_rec.recommendations) == 0:
+                content = re.sub(regex_str, "", content)
+            else:
+                replacement_import_strs = set(
+                    [replacement_import_target.import_str for replacement_import_target in import_rec.recommendations]
+                )
+                content = re.sub(regex_str, "\n".join(replacement_import_strs), content)
+        return FileContent(path=self.python_file_info.path, content=content.encode())
 
 
 class ImportFixerHandler:
     def __init__(self, python_package_helper: PythonPackageHelper) -> None:
         self.python_package_helper = python_package_helper
 
-    def get_python_file_wildcard_import_recommendations(
-        self, python_file_info: PythonFileInfo
+    def get_transitive_python_file_import_recommendations(
+        self, python_file_info: PythonFileInfo, transitive_python_file: PythonFileInfo
     ) -> PythonFileImportRecommendations:
+        # Update python files that import the current python file via a wildcard import
+        star_import_target = PythonImport(
+            modules=tuple(python_file_info.module_key.split(".")), level=0, names=("*",), aliases=()
+        )
+        recs = self.get_star_import_recommendation(
+            source_python_file_info=transitive_python_file,
+            python_wildcard_import=star_import_target,
+        )
         return PythonFileImportRecommendations(
-            python_file_info=python_file_info,
-            wildcard_import_recommendations=tuple(
-                self.generate_python_wildcard_import_recommendations(python_file_info=python_file_info)
-            ),
-            transitive_import_recs=tuple(
-                self.generate_transitive_python_file_import_recommendations(python_file_info=python_file_info)
+            python_file_info=transitive_python_file,
+            import_recommendations=(
+                PythonImportRecommendation(source_import=star_import_target, recommendations=recs),
             ),
         )
-
-    def generate_python_wildcard_import_recommendations(
-        self, python_file_info: PythonFileInfo
-    ) -> Iterable[WildcardImportRecommendation]:
-        for python_import in python_file_info.imports:
-            if python_import.is_star_import:
-                recs = self.get_star_import_recommendation(
-                    source_python_file_info=python_file_info,
-                    python_wildcard_import=python_import,
-                )
-                if len(recs) == 0:
-                    continue
-                yield WildcardImportRecommendation(wildcard_import=python_import, recommendations=recs)
-
-    def generate_transitive_python_file_import_recommendations(
-        self, python_file_info: PythonFileInfo
-    ) -> Iterable[PythonFileImportRecommendations]:
-        # Update python files that import the current python file via a wildcard import
-        for transitive_python_file in self.python_package_helper.get_transtive_python_files_by_wildcard_import(
-            source_python_file_info=python_file_info
-        ):
-            star_import_target = PythonImport(
-                modules=tuple(python_file_info.module_key.split(".")), level=0, names=("*",), aliases=()
-            )
-            recs = self.get_star_import_recommendation(
-                source_python_file_info=transitive_python_file,
-                python_wildcard_import=star_import_target,
-            )
-            if len(recs) == 0:
-                continue
-            yield PythonFileImportRecommendations(
-                python_file_info=transitive_python_file,
-                wildcard_import_recommendations=(
-                    WildcardImportRecommendation(wildcard_import=star_import_target, recommendations=recs),
-                ),
-                transitive_import_recs=(),
-            )
 
     def get_star_import_recommendation(
         self,
@@ -138,7 +105,9 @@ class ImportFixerHandler:
         import_recommendations = []
 
         # Check usage of direct transitive python file names
-        names = transitive_python_file_info.get_names_used_by_file_target(source_file_target=source_python_file_info)
+        names = self.python_package_helper.get_names_used_from_transitive_python_file(
+            source_py_file=source_python_file_info, transitive_py_file=transitive_python_file_info
+        )
         if names:
             import_recommendations.append(
                 PythonImport(
@@ -148,7 +117,9 @@ class ImportFixerHandler:
 
         # Get usage of imports names from transitive python file
         import_recommendations.extend(
-            transitive_python_file_info.get_imports_used_by_file_target(source_file_target=source_python_file_info)
+            self.python_package_helper.get_imports_used_from_transitive_python_file(
+                source_py_file=source_python_file_info, transitive_py_file=transitive_python_file_info
+            )
         )
         return import_recommendations
 
@@ -175,16 +146,42 @@ class ImportFixerHandler:
                 )
         return submodule_python_imports
 
-    def get_module_directory_imports_recommendations_for_python_file(
-        self, source_python_file_info: PythonFileInfo, module_python_import: PythonImport
-    ) -> List[PythonImport]:
-        module_directory_import_targets = []
-        for module_key, python_file_info in self.python_package_helper.python_file_info_by_module.items():
-            symbol = python_file_info.module_key.split(".")[-1]
-            if module_python_import.modules_str in module_key and utils.has_symbol_usage(
-                symbol=symbol, file_content=source_python_file_info.file_content_str
+    def get_file_duplicate_import_recommendations(
+        self, duplicate_imports: Tuple[PythonImport, ...], duplicate_name: str
+    ) -> Tuple[PythonImportRecommendation, ...]:
+        direct_name_definitions: List[PythonImport] = []
+        print(f"Processing {duplicate_name}")
+        for duplicate_import in duplicate_imports:
+            print(duplicate_import)
+            if (
+                f"{duplicate_import.modules_str}.{duplicate_name}"
+                in self.python_package_helper.python_file_info_by_module
             ):
-                module_directory_import_targets.append(
-                    PythonImport(modules=module_python_import.modules, level=0, names=(symbol,), aliases=())
+                print("Found submodule match!")
+                direct_name_definitions.append(duplicate_import)
+            elif duplicate_import.modules_str in self.python_package_helper.python_file_info_by_module:
+                file_info = self.python_package_helper.python_file_info_by_module[duplicate_import.modules_str]
+                if file_info.has_name(name=duplicate_name):
+                    print("Found moudle usage")
+                    direct_name_definitions.append(duplicate_import)
+            else:
+                print("Something else!")
+                direct_name_definitions.append(duplicate_import)
+        non_direct_import_definitions = tuple(list(set(duplicate_imports) - set(direct_name_definitions)))
+        import_recommendations = []
+        for non_direct_import in non_direct_import_definitions:
+            updated_names = tuple(set(non_direct_import.names) - set(duplicate_name))
+            import_recommendations.append(
+                PythonImportRecommendation(
+                    source_import=non_direct_import,
+                    recommendations=(
+                        PythonImport(
+                            modules=non_direct_import.modules,
+                            level=non_direct_import.level,
+                            names=updated_names,
+                            aliases=non_direct_import.aliases
+                        ),
+                    ) if updated_names else ()
                 )
-        return module_directory_import_targets
+            )
+        return tuple(import_recommendations)

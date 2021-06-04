@@ -1,7 +1,7 @@
 import ast
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Tuple
+from typing import Iterator, List, Tuple
 
 from . import utils
 
@@ -9,7 +9,7 @@ from . import utils
 @dataclass(frozen=True)
 class PythonImport:
     modules: Tuple[str, ...]
-    level: Tuple[int, ...]
+    level: int
     names: Tuple[str, ...]
     aliases: Tuple[str, ...]
 
@@ -24,7 +24,8 @@ class PythonImport:
     @property
     def import_str(self) -> str:
         if self.modules_str:
-            return f"from {self.modules_str} import {', '.join(self.names)}"
+            module_str = self.modules_str.replace(".__init__", "")
+            return f"from {module_str} import {', '.join(self.names)}"
         return f"import {', '.join(self.names)}"
 
     @property
@@ -67,38 +68,17 @@ class PythonFileInfo:
                 return True
         return False
 
-    def get_names_used_by_file_target(self, source_file_target: "PythonFileInfo") -> Tuple[str, ...]:
-        names = []
-        file_content = source_file_target.file_content_str
+    def has_name(self, name: str) -> bool:
         for class_target in self.classes:
-            if utils.has_symbol_usage(symbol=class_target.name, file_content=file_content):
-                names.append(class_target.name)
+            if name == class_target.name:
+                return True
         for function_target in self.functions:
-            if utils.has_symbol_usage(symbol=function_target.name, file_content=file_content):
-                names.append(function_target.name)
+            if name == function_target.name:
+                return True
         for constant_target in self.constants:
-            for src_constant in source_file_target.constants:
-                if constant_target.name == src_constant.name:
-                    break
-            else:
-                if utils.has_symbol_usage(symbol=constant_target.name, file_content=file_content):
-                    names.append(constant_target.name)
-        return tuple(names)
-
-    def get_imports_used_by_file_target(self, source_file_target: "PythonFileInfo") -> Tuple[PythonImport, ...]:
-        import_targets = []
-        for import_target in self.imports:
-            names_used = []
-            for name in import_target.names:
-                if utils.has_symbol_usage(symbol=name, file_content=source_file_target.file_content_str):
-                    names_used.append(name)
-            if names_used:
-                import_targets.append(
-                    PythonImport(
-                        modules=import_target.modules, level=import_target.level, names=tuple(names_used), aliases=()
-                    )
-                )
-        return tuple(import_targets)
+            if name == constant_target.name:
+                return True
+        return False
 
 
 def get_classes_from_ast_node(node: ast.Module) -> Iterator[PythonClass]:

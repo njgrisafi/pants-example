@@ -36,7 +36,7 @@ def generate_relative_module_key(app_python_file_path: str, include_top_level_pa
     if include_top_level_package is False:
         app_root = app_python_file_path.split("/")[0]
         relative_path = app_python_file_path.split(f"{app_root}/")[-1]
-    return relative_path.split(".py")[0].replace("/", ".")
+    return relative_path.split(".py")[0].replace("/", ".").replace(".__init__", "")
 
 
 def has_symbol_usage(symbol: str, file_content: str) -> bool:
