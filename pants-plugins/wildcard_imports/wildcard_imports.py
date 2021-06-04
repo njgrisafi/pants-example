@@ -19,9 +19,9 @@ from .wildcard_import_rules import (
 )
 
 
-class ImportFixerSubsystem(LineOriented, GoalSubsystem):
-    name = "import-fixer"
-    help = "Parses python targets digest for import improvements."
+class WildcardImportsSubsystem(LineOriented, GoalSubsystem):
+    name = "wildcard-imports"
+    help = "Parses targets digest for wildcard imports"
 
     @classmethod
     def register_options(cls, register) -> None:
@@ -33,7 +33,7 @@ class ImportFixerSubsystem(LineOriented, GoalSubsystem):
             help="Run on these target types, only `python_tests` and `python_library` values are accepted.",
         )
         register(
-            "--fix-wildcard-imports",
+            "--fix",
             type=bool,
             default=False,
             help="True to attempt autofix for widcard imports.",
@@ -49,18 +49,15 @@ class ImportFixerSubsystem(LineOriented, GoalSubsystem):
             ),
         )
         register(
-            "--fix_duplicate_imports",
+            "--ignore-duplicate-imports",
             type=bool,
             default=False,
-            help="True to attempt autofix for duplicate import names.",
+            help="True to ignore duplicate import fixes in `--fix` result.",
         )
         register(
             "--ignored-names-by-module",
             type=dict,
-            help=(
-                "Optional provided mapping of modules to names to ignore when fixing imports"
-                "For example: {'common': ['freeze_time']}"
-            ),
+            help=("Optional provided mapping of modules to names to ignore" "For example: {'common': ['freeze_time']}"),
         )
 
     @property
@@ -72,12 +69,8 @@ class ImportFixerSubsystem(LineOriented, GoalSubsystem):
         return self.options.include_top_level_package
 
     @property
-    def fix_wildcard_imports(self) -> bool:
-        return self.options.fix_wildcard_imports
-
-    @property
-    def fix_duplicate_imports(self) -> bool:
-        return self.options.fix_duplicate_imports
+    def fix(self) -> bool:
+        return self.options.fix
 
     @property
     def ignore_duplicate_imports(self) -> bool:
@@ -89,7 +82,7 @@ class ImportFixerSubsystem(LineOriented, GoalSubsystem):
 
 
 class WildcardImports(Goal):
-    subsystem_cls = ImportFixerSubsystem
+    subsystem_cls = WildcardImportsSubsystem
 
 
 TargetFilter = Callable[[Target], bool]
@@ -97,8 +90,8 @@ allowed_target_types = RegisteredTargetTypes.create({tgt_type for tgt_type in [P
 
 
 @goal_rule
-async def import_fixer(
-    console: Console, wildcard_imports_subsystem: ImportFixerSubsystem, targets: Targets, workspace: Workspace
+async def wildcard_imports(
+    console: Console, wildcard_imports_subsystem: WildcardImportsSubsystem, targets: Targets, workspace: Workspace
 ) -> WildcardImports:
     # Filter target types
     def filter_target_type(target_type: str) -> TargetFilter:
@@ -133,7 +126,7 @@ async def import_fixer(
         return WildcardImports(exit_code=0)
 
     # Perform fixes
-    if wildcard_imports_subsystem.fix_wildcard_imports:
+    if wildcard_imports_subsystem.fix:
         all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
         py_package_helper = for_python_files(
             python_files_digest_contents=all_py_files_digest_contents,
@@ -172,24 +165,26 @@ async def import_fixer(
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in all_import_recs]))
         workspace.write_digest(digest)
-        return WildcardImports(exit_code=0)
-    if wildcard_imports_subsystem.fix_duplicate_imports:
+        if wildcard_imports_subsystem.ignore_duplicate_imports:
+            return WildcardImports(exit_code=0)
+
         # Reload package info
-        all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
+        all_py_files_digest_contents = await Get(DigestContents, PathGlobs(("app/**/*.py",)))
         py_package_helper = for_python_files(
             python_files_digest_contents=all_py_files_digest_contents,
             include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
             ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
         )
+        py_package_helper.update_file_contents(updated_python_files_contents=all_import_recs)
         dup_import_recs = await MultiGet(
             Get(
                 PythonFileImportRecommendations,
                 PythonFileDuplicateImportRecommendationsRequest,
                 PythonFileDuplicateImportRecommendationsRequest(
-                    file_path=import_rec.python_file_info.path, python_package_helper=py_package_helper
-                ),
-            )
-            for import_rec in all_import_recs
+                    file_path=import_rec.python_file_info.path,
+                    python_package_helper=py_package_helper
+                )
+            ) for import_rec in all_import_recs
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
         workspace.write_digest(digest)
