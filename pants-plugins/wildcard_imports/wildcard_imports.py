@@ -169,13 +169,16 @@ async def wildcard_imports(
             return WildcardImports(exit_code=0)
 
         # Reload package info
-        all_py_files_digest_contents = await Get(DigestContents, PathGlobs(("app/**/*.py",)))
+        # all_py_files_digest_contents = await Get(DigestContents, PathGlobs(("app/**/*.py",)))
+        new_py_files_digest_contents = await Get(DigestContents, PathGlobs(("app/**/*.py",)))
+
+        # THIS SHOULD NOT FAIL!
+        assert all_py_files_digest_contents != new_py_files_digest_contents
         py_package_helper = for_python_files(
             python_files_digest_contents=all_py_files_digest_contents,
             include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
             ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
         )
-        py_package_helper.update_file_contents(updated_python_files_contents=all_import_recs)
         dup_import_recs = await MultiGet(
             Get(
                 PythonFileImportRecommendations,
