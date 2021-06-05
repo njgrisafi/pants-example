@@ -138,7 +138,6 @@ class ImportFixerHandler:
         module_directory_python_imports = []
         for module_key, python_file_info in self.python_package_helper.python_file_info_by_module.items():
             symbol = python_file_info.module_key.split(".")[-1]
-            print("checking", symbol)
             if module_python_import.modules_str in module_key and utils.has_symbol_usage(
                 symbol=symbol, file_content=source_python_file_info.file_content_str
             ):
@@ -160,27 +159,22 @@ class ImportFixerHandler:
         self, duplicate_imports: Tuple[PythonImport, ...], duplicate_name: str
     ) -> Tuple[PythonImportRecommendation, ...]:
         direct_name_definitions: List[PythonImport] = []
-        print(f"Processing {duplicate_name}")
         for duplicate_import in duplicate_imports:
-            print(duplicate_import)
             if (
                 f"{duplicate_import.modules_str}.{duplicate_name}"
                 in self.python_package_helper.python_file_info_by_module
             ):
-                print("Found submodule match!")
                 direct_name_definitions.append(duplicate_import)
             elif duplicate_import.modules_str in self.python_package_helper.python_file_info_by_module:
                 file_info = self.python_package_helper.python_file_info_by_module[duplicate_import.modules_str]
                 if file_info.has_name(name=duplicate_name):
-                    print("Found moudle usage")
                     direct_name_definitions.append(duplicate_import)
             else:
-                print("Something else!")
                 direct_name_definitions.append(duplicate_import)
         non_direct_import_definitions = tuple(list(set(duplicate_imports) - set(direct_name_definitions)))
         import_recommendations = []
         for non_direct_import in non_direct_import_definitions:
-            updated_names = tuple(set(non_direct_import.names) - set(duplicate_name))
+            updated_names = tuple(set(non_direct_import.names) - {duplicate_name})
             import_recommendations.append(
                 PythonImportRecommendation(
                     source_import=non_direct_import,

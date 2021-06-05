@@ -1,9 +1,6 @@
 import ast
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Iterator, List, Tuple
-
-from . import utils
+from typing import Iterator, Tuple
 
 
 @dataclass(frozen=True)
