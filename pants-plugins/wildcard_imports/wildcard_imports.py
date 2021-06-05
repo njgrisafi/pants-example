@@ -141,6 +141,7 @@ async def wildcard_imports(
             )
             for fp in wildcard_import_sources
         )
+        print(wildcard_import_recs)
         get_commands: List[Get] = []
         for import_rec in wildcard_import_recs:
             get_commands.extend(
@@ -170,28 +171,28 @@ async def wildcard_imports(
 
         # Reload package info
         # all_py_files_digest_contents = await Get(DigestContents, PathGlobs(("app/**/*.py",)))
-        new_py_files_digest_contents = await Get(DigestContents, PathGlobs(("app/**/*.py",)))
+        new_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
 
         # THIS SHOULD NOT FAIL!
-        assert all_py_files_digest_contents != new_py_files_digest_contents
-        py_package_helper = for_python_files(
-            python_files_digest_contents=all_py_files_digest_contents,
-            include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
-            ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
-        )
-        dup_import_recs = await MultiGet(
-            Get(
-                PythonFileImportRecommendations,
-                PythonFileDuplicateImportRecommendationsRequest,
-                PythonFileDuplicateImportRecommendationsRequest(
-                    file_path=import_rec.python_file_info.path,
-                    python_package_helper=py_package_helper
-                )
-            ) for import_rec in all_import_recs
-        )
-        digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
-        workspace.write_digest(digest)
-        return WildcardImports(exit_code=0)
+        assert all_py_files_digest_contents != new_py_files_digest_contents, "This seems to be cached"
+        # py_package_helper = for_python_files(
+        #     python_files_digest_contents=all_py_files_digest_contents,
+        #     include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
+        #     ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
+        # )
+        # dup_import_recs = await MultiGet(
+        #     Get(
+        #         PythonFileImportRecommendations,
+        #         PythonFileDuplicateImportRecommendationsRequest,
+        #         PythonFileDuplicateImportRecommendationsRequest(
+        #             file_path=import_rec.python_file_info.path,
+        #             python_package_helper=py_package_helper
+        #         )
+        #     ) for import_rec in all_import_recs
+        # )
+        # digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
+        # workspace.write_digest(digest)
+        # return WildcardImports(exit_code=0)
 
     # Output violating files and exit for failure
     with wildcard_imports_subsystem.line_oriented(console) as print_stdout:

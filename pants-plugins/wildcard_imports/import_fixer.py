@@ -74,12 +74,21 @@ class ImportFixerHandler:
                 transitive_python_file_info = self.python_package_helper.python_file_info_by_module[
                     import_target.modules_str
                 ]
+                # print("module str")
+                # print(import_target.modules_str)
+                # print("path")
+                # print(source_python_file_info.path)
+                # print("info")
+                # print(transitive_python_file_info)
                 import_recommendations.extend(
                     self.get_transitive_import_recommendations(
                         source_python_file_info=source_python_file_info,
                         transitive_python_file_info=transitive_python_file_info,
                     )
                 )
+
+                if transitive_python_file_info.is_module:
+                    raise KeyError("Trigger submodule check")
             except KeyError:
                 # Check for submodule direct usages in source python file
                 import_recommendations.extend(
@@ -129,6 +138,7 @@ class ImportFixerHandler:
         module_directory_python_imports = []
         for module_key, python_file_info in self.python_package_helper.python_file_info_by_module.items():
             symbol = python_file_info.module_key.split(".")[-1]
+            print("checking", symbol)
             if module_python_import.modules_str in module_key and utils.has_symbol_usage(
                 symbol=symbol, file_content=source_python_file_info.file_content_str
             ):

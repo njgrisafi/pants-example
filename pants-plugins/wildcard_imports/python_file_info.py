@@ -62,6 +62,10 @@ class PythonFileInfo:
     def file_content_str(self) -> str:
         return self.file_content.decode(encoding="utf-8")
 
+    @property
+    def is_module(self) -> bool:
+        return "__init__.py" in self.path
+
     def uses_import(self, import_str: str) -> bool:
         for import_target in self.imports:
             if import_target.import_str == import_str:

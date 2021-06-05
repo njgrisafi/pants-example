@@ -88,24 +88,6 @@ class PythonPackageHelper:
                 defined_names.append(name)
         return defined_names
 
-    def update_file_contents(self, updated_python_files_digest_contents: List[Tuple[str, bytes]]) -> None:
-        for file_content in updated_python_files_digest_contents:
-            file_info = self.get_python_file_info_from_file_path(file_path=file_content.path)
-            if file_info is None:
-                continue
-            updated_dict = dict(self.python_file_info_by_module)
-            updated_dict[file_info.module_key] = PythonFileInfo(
-                path=file_info.path,
-                file_content=file_content.content,
-                module_key=file_info.module_key,
-                imports=file_info.imports,
-                classes=file_info.classes,
-                functions=file_info.functions,
-                constants=file_info.constants
-            )
-            self.python_file_info_by_module = FrozenDict(updated_dict)
-
-
 
 def unwind_relative_imports(file_target_by_module: Dict[str, PythonFileInfo]) -> Dict[str, PythonFileInfo]:
     for module_key in file_target_by_module:
