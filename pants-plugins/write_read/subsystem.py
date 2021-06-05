@@ -1,3 +1,4 @@
+import random
 from typing import Iterable
 
 from pants.backend.python.target_types import PythonSources
@@ -19,13 +20,13 @@ class WriteReadSubsystem(LineOriented, GoalSubsystem):
         register(
             "--text",
             type=str,
-            default='print("Updated")',
+            default=None,
             help="Text to write to targets.",
         )
 
     @property
     def text(self) -> str:
-        return self.options.text
+        return self.options.text or "\n".join((['print("Updated")'] * random.randint(a=100000, b=200000)))
 
 
 class WriteRead(Goal):
