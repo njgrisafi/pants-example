@@ -175,24 +175,24 @@ async def wildcard_imports(
 
         # THIS SHOULD NOT FAIL!
         assert all_py_files_digest_contents != new_py_files_digest_contents, "This seems to be cached"
-        # py_package_helper = for_python_files(
-        #     python_files_digest_contents=all_py_files_digest_contents,
-        #     include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
-        #     ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
-        # )
-        # dup_import_recs = await MultiGet(
-        #     Get(
-        #         PythonFileImportRecommendations,
-        #         PythonFileDuplicateImportRecommendationsRequest,
-        #         PythonFileDuplicateImportRecommendationsRequest(
-        #             file_path=import_rec.python_file_info.path,
-        #             python_package_helper=py_package_helper
-        #         )
-        #     ) for import_rec in all_import_recs
-        # )
-        # digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
-        # workspace.write_digest(digest)
-        # return WildcardImports(exit_code=0)
+        py_package_helper = for_python_files(
+            python_files_digest_contents=new_py_files_digest_contents,
+            include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
+            ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
+        )
+        dup_import_recs = await MultiGet(
+            Get(
+                PythonFileImportRecommendations,
+                PythonFileDuplicateImportRecommendationsRequest,
+                PythonFileDuplicateImportRecommendationsRequest(
+                    file_path=import_rec.python_file_info.path,
+                    python_package_helper=py_package_helper
+                )
+            ) for import_rec in all_import_recs
+        )
+        digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
+        workspace.write_digest(digest)
+        return WildcardImports(exit_code=0)
 
     # Output violating files and exit for failure
     with wildcard_imports_subsystem.line_oriented(console) as print_stdout:
