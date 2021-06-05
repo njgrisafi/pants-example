@@ -4,13 +4,12 @@ print_stacktrace = true
 pythonpath = ["%(buildroot)s/pants-plugins"]
 backend_packages = [
   "pants.backend.python",
-  "custom_black",
-  "custom_flake8",
-  "wildcard_imports"
+  "write_read"
 ]
 
 pants_ignore.add = [
-  "/.*"
+  "/.*",
+  "/*.py"
 ]
 
 [source]
@@ -26,13 +25,6 @@ string_imports = true
 [dependees]
 transitive = true
 closed = true
-
-[black]
-config = "pyproject.toml"
-version = "black==21.5b1"
-
-[flake8]
-config = "setup.cfg"
 
 [anonymous-telemetry]
 enabled = false
