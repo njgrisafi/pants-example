@@ -58,7 +58,6 @@ async def setup_autoimport(setup_request: SetupRequest) -> Setup:
     )
     snapshot_get = Get(Snapshot, Digest, autoimport_req.digest)
     snapshot, autoimport_pex = await MultiGet(snapshot_get, autoimport_get)
-    print(" ".join(snapshot.files))
     process = await Get(
         Process,
         VenvPexProcess(
