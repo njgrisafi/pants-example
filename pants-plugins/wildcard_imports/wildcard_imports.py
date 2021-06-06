@@ -228,14 +228,10 @@ async def wildcard_imports(
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
         workspace.write_digest(digest)
-        res: FmtResult = await Get(
-            FmtResult,
-            AutoImportRequest,
-            AutoImportRequest(digest=digest),
-        )
-        workspace.write_digest(res.output)
 
         # Post Wildcard fix formatting
+
+        # Autoflake
         digest = await Get(Digest, PathGlobs(sources.files))
         res: FmtResult = await Get(
             FmtResult,
@@ -243,6 +239,17 @@ async def wildcard_imports(
             AutoflakeRequest(argv=("--in-place", "--remove-all-unused-imports"), digest=digest),
         )
         workspace.write_digest(res.output)
+
+        # Autoimport
+        digest = await Get(Digest, PathGlobs(sources.files))
+        res: FmtResult = await Get(
+            FmtResult,
+            AutoImportRequest,
+            AutoImportRequest(digest=digest),
+        )
+        workspace.write_digest(res.output)
+
+        # Isort
         digest = await Get(Digest, PathGlobs(sources.files))
         res: FmtResult = await Get(
             FmtResult,
