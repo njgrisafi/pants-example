@@ -1,6 +1,7 @@
 from typing import Callable, Dict, Iterable, List, Tuple
 
 from pants.backend.python.target_types import PythonLibrary, PythonSources, PythonTests
+from pants.core.goals.fmt import FmtResult
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.console import Console
 from pants.engine.fs import CreateDigest, Digest, DigestContents, PathGlobs, Workspace
@@ -10,7 +11,9 @@ from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets,
 from pants.util.filtering import and_filters, create_filters
 
 from . import utils
+from .autoflake_rules import AutoflakeRequest
 from .import_fixer import PythonFileImportRecommendations
+from .isort_rules import IsortRequest
 from .python_package_helper import for_python_files
 from .wildcard_import_rules import (
     PythonFileDuplicateImportRecommendationsRequest,
@@ -107,7 +110,7 @@ async def wildcard_imports(
     filtered_targets = [target for target in targets if anded_filter(target)]
 
     # Get sources and contents
-    sources = await Get(
+    sources: SourceFiles = await Get(
         SourceFiles,
         SourceFilesRequest(
             [tgt.get(Sources) for tgt in filtered_targets], for_sources_types=(PythonSources,), enable_codegen=False
@@ -127,6 +130,32 @@ async def wildcard_imports(
 
     # Perform fixes
     if wildcard_imports_subsystem.fix:
+        # Pre-Format imports for easier parsing
+        res: FmtResult = await Get(
+            FmtResult,
+            AutoflakeRequest,
+            AutoflakeRequest(
+                argv=("--in-place", "--remove-all-unused-imports", "--expand-star-imports"),
+                digest=sources.snapshot.digest,
+            ),
+        )
+        workspace.write_digest(res.output)
+        digest = await Get(Digest, PathGlobs(sources.files))
+        res: FmtResult = await Get(
+            FmtResult,
+            IsortRequest,
+            IsortRequest(argv=("--line-length=100000000", "--combine-star"), digest=digest),
+        )
+        workspace.write_digest(res.output)
+
+        # Update contents for 'import *' patterns
+        digest_contents: DigestContents = await Get(DigestContents, PathGlobs(wildcard_import_sources))
+        wildcard_import_sources = []
+        for file_content in digest_contents:
+            if utils.has_wildcard_import(file_content.content):
+                wildcard_import_sources.append(file_content.path)
+
+        # Run custom fixes
         all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
         py_package_helper = for_python_files(
             python_files_digest_contents=all_py_files_digest_contents,
@@ -168,9 +197,10 @@ async def wildcard_imports(
         if wildcard_imports_subsystem.ignore_duplicate_imports:
             return WildcardImports(exit_code=0)
 
-        # Reload package info
+        # Reload updates
         new_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
 
+        # Fix import deuplications
         # THIS SHOULD NOT FAIL!
         assert all_py_files_digest_contents != new_py_files_digest_contents, "This seems to be cached"
         py_package_helper = for_python_files(
@@ -190,6 +220,22 @@ async def wildcard_imports(
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
         workspace.write_digest(digest)
+
+        # Post Wildcard fix formatting
+        digest = await Get(Digest, PathGlobs(sources.files))
+        res: FmtResult = await Get(
+            FmtResult,
+            AutoflakeRequest,
+            AutoflakeRequest(argv=("--in-place", "--remove-all-unused-imports"), digest=digest),
+        )
+        workspace.write_digest(res.output)
+        digest = await Get(Digest, PathGlobs(sources.files))
+        res: FmtResult = await Get(
+            FmtResult,
+            IsortRequest,
+            IsortRequest(argv=("--use-parentheses", "--trailing-comma", "--force-grid-wrap=0"), digest=digest),
+        )
+        workspace.write_digest(res.output)
         return WildcardImports(exit_code=0)
 
     # Output violating files and exit for failure

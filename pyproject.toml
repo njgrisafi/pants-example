@@ -28,7 +28,7 @@ line-length = 120
 fast = true
 
 [tool.isort]
-line_length = 2000
+line_length = 120
 multi_line_output = 3
 include_trailing_comma = true
 force_grid_wrap = 0
