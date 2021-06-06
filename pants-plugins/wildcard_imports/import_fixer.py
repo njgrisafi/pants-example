@@ -69,6 +69,7 @@ class ImportFixerHandler:
             import_target = stack.pop()
             if import_target.modules_str in visited:
                 continue
+            print(source_python_file_info, import_target.modules_str)
             visited.append(import_target.modules_str)
             try:
                 transitive_python_file_info = self.python_package_helper.python_file_info_by_module[

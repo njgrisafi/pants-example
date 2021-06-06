@@ -9,6 +9,7 @@ from pants.engine.goal import Goal, GoalSubsystem, LineOriented
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
 from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
 from pants.util.filtering import and_filters, create_filters
+from wildcard_imports.autoimport_rules import AutoImportRequest
 
 from . import utils
 from .autoflake_rules import AutoflakeRequest
@@ -130,21 +131,14 @@ async def wildcard_imports(
 
     # Perform fixes
     if wildcard_imports_subsystem.fix:
-        # Pre-Format imports for easier parsing
+        # Pre-Fix imports for with autoflake
         res: FmtResult = await Get(
             FmtResult,
             AutoflakeRequest,
             AutoflakeRequest(
-                argv=("--in-place", "--remove-all-unused-imports", "--expand-star-imports"),
+                argv=("--in-place", "--remove-all-unused-imports"),
                 digest=sources.snapshot.digest,
             ),
-        )
-        workspace.write_digest(res.output)
-        digest = await Get(Digest, PathGlobs(sources.files))
-        res: FmtResult = await Get(
-            FmtResult,
-            IsortRequest,
-            IsortRequest(argv=("--line-length=100000000", "--combine-star"), digest=digest),
         )
         workspace.write_digest(res.output)
 
@@ -154,6 +148,15 @@ async def wildcard_imports(
         for file_content in digest_contents:
             if utils.has_wildcard_import(file_content.content):
                 wildcard_import_sources.append(file_content.path)
+
+        # Preformat remainging wildcard import sources for custom fix logic
+        digest = await Get(Digest, PathGlobs(wildcard_import_sources))
+        res: FmtResult = await Get(
+            FmtResult,
+            IsortRequest,
+            IsortRequest(argv=("--line-length=100000000", "--combine-star"), digest=digest),
+        )
+        workspace.write_digest(res.output)
 
         # Run custom fixes
         all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
@@ -192,6 +195,8 @@ async def wildcard_imports(
         all_import_recs: List[PythonFileImportRecommendations] = list(
             set(list(wildcard_import_recs) + list(transitive_import_recs))
         )
+
+        # Preformat changed sources for duplicate import fixes
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in all_import_recs]))
         res: FmtResult = await Get(
             FmtResult,
@@ -205,9 +210,7 @@ async def wildcard_imports(
         # Reload updates
         new_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
 
-        # Fix import deuplications
-        # THIS SHOULD NOT FAIL!
-        assert all_py_files_digest_contents != new_py_files_digest_contents, "This seems to be cached"
+        # Fix import duplications
         py_package_helper = for_python_files(
             python_files_digest_contents=new_py_files_digest_contents,
             include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
@@ -225,6 +228,12 @@ async def wildcard_imports(
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
         workspace.write_digest(digest)
+        res: FmtResult = await Get(
+            FmtResult,
+            AutoImportRequest,
+            AutoImportRequest(digest=digest),
+        )
+        workspace.write_digest(res.output)
 
         # Post Wildcard fix formatting
         digest = await Get(Digest, PathGlobs(sources.files))

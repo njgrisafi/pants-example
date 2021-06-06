@@ -21,21 +21,20 @@ from pants.util.strutil import pluralize
 
 
 @dataclass(frozen=True)
-class AutoflakeFieldSet(FieldSet):
+class AutoImportFieldSet(FieldSet):
     required_fields = (PythonSources,)
 
     sources: PythonSources
 
 
 @dataclass(frozen=True)
-class AutoflakeRequest:
-    argv: Tuple[str, ...]
+class AutoImportRequest:
     digest: Digest
 
 
 @dataclass(frozen=True)
 class SetupRequest:
-    request: AutoflakeRequest
+    request: AutoImportRequest
 
 
 @dataclass(frozen=True)
@@ -45,42 +44,43 @@ class Setup:
 
 
 @rule(level=LogLevel.DEBUG)
-async def setup_autoflake(setup_request: SetupRequest) -> Setup:
-    autoflake_req = setup_request.request
-    autoflake_get = Get(
+async def setup_autoimport(setup_request: SetupRequest) -> Setup:
+    autoimport_req = setup_request.request
+    autoimport_get = Get(
         VenvPex,
         PexRequest(
-            output_filename="autoflake.pex",
+            output_filename="autoimport.pex",
             internal_only=True,
-            requirements=PexRequirements(("autoflake>=1.3,<=1.4",)),
+            requirements=PexRequirements(("autoimport>=0.7.0",)),
             interpreter_constraints=PexInterpreterConstraints(("CPython>=3.7",)),
-            main=ConsoleScript("autoflake"),
+            main=ConsoleScript("autoimport"),
         ),
     )
-    snapshot_get = Get(Snapshot, Digest, autoflake_req.digest)
-    snapshot, autoflake_pex = await MultiGet(snapshot_get, autoflake_get)
+    snapshot_get = Get(Snapshot, Digest, autoimport_req.digest)
+    snapshot, autoimport_pex = await MultiGet(snapshot_get, autoimport_get)
+    print(" ".join(snapshot.files))
     process = await Get(
         Process,
         VenvPexProcess(
-            autoflake_pex,
-            argv=(*autoflake_req.argv, *snapshot.files),
+            autoimport_pex,
+            argv=snapshot.files,
             input_digest=snapshot.digest,
             output_files=snapshot.files,
-            description=f"Run autoflake on {pluralize(len(snapshot.files), 'file')}.",
+            description=f"Run autoimport on {pluralize(len(snapshot.files), 'file')}.",
             level=LogLevel.DEBUG,
         ),
     )
     return Setup(process, original_digest=snapshot.digest)
 
 
-@rule(desc="Run autoflake with args", level=LogLevel.DEBUG)
-async def autoflake_run(request: AutoflakeRequest) -> FmtResult:
+@rule(desc="Run autoimport", level=LogLevel.DEBUG)
+async def autoimport_run(request: AutoImportRequest) -> FmtResult:
     setup = await Get(Setup, SetupRequest(request))
     result = await Get(ProcessResult, Process, setup.process)
     return FmtResult.from_process_result(
         result,
         original_digest=setup.original_digest,
-        formatter_name="autoflake",
+        formatter_name="autoimport",
     )
 
 
