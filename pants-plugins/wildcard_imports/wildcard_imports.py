@@ -193,7 +193,12 @@ async def wildcard_imports(
             set(list(wildcard_import_recs) + list(transitive_import_recs))
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in all_import_recs]))
-        workspace.write_digest(digest)
+        res: FmtResult = await Get(
+            FmtResult,
+            IsortRequest,
+            IsortRequest(argv=("--force-single-line-imports"), digest=digest),
+        )
+        workspace.write_digest(res.output)
         if wildcard_imports_subsystem.ignore_duplicate_imports:
             return WildcardImports(exit_code=0)
 
