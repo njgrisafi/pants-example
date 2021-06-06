@@ -196,7 +196,7 @@ async def wildcard_imports(
         res: FmtResult = await Get(
             FmtResult,
             IsortRequest,
-            IsortRequest(argv=("--force-single-line-imports"), digest=digest),
+            IsortRequest(argv=("--force-single-line-imports",), digest=digest),
         )
         workspace.write_digest(res.output)
         if wildcard_imports_subsystem.ignore_duplicate_imports:
