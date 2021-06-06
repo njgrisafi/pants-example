@@ -137,8 +137,8 @@ async def get_file_duplicate_import_recommendations(
                     python_file_info=py_file_dup_import_rec_req.python_file_info,
                     duplicate_imports=tuple(python_imports),
                     duplicate_name=name,
-                    python_package_helper=py_file_dup_import_rec_req.python_package_helper
-                )
+                    python_package_helper=py_file_dup_import_rec_req.python_package_helper,
+                ),
             )
         )
     dup_file_import_recs: Tuple[PythonFileImportRecommendations, ...] = await MultiGet(get_commands)
@@ -147,8 +147,7 @@ async def get_file_duplicate_import_recommendations(
     for file_import_rec in dup_file_import_recs:
         merged_recommendations = tuple(set(list(merged_recommendations) + list(file_import_rec.import_recommendations)))
     return PythonFileImportRecommendations(
-        python_file_info=py_file_dup_import_rec_req.python_file_info,
-        import_recommendations=merged_recommendations
+        python_file_info=py_file_dup_import_rec_req.python_file_info, import_recommendations=merged_recommendations
     )
 
 

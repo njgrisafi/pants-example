@@ -74,12 +74,6 @@ class ImportFixerHandler:
                 transitive_python_file_info = self.python_package_helper.python_file_info_by_module[
                     import_target.modules_str
                 ]
-                # print("module str")
-                # print(import_target.modules_str)
-                # print("path")
-                # print(source_python_file_info.path)
-                # print("info")
-                # print(transitive_python_file_info)
                 import_recommendations.extend(
                     self.get_transitive_import_recommendations(
                         source_python_file_info=source_python_file_info,
@@ -183,9 +177,11 @@ class ImportFixerHandler:
                             modules=non_direct_import.modules,
                             level=non_direct_import.level,
                             names=updated_names,
-                            aliases=non_direct_import.aliases
+                            aliases=non_direct_import.aliases,
                         ),
-                    ) if updated_names else ()
+                    )
+                    if updated_names
+                    else (),
                 )
             )
         return tuple(import_recommendations)

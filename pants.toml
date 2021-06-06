@@ -4,6 +4,8 @@ print_stacktrace = true
 pythonpath = ["%(buildroot)s/pants-plugins"]
 backend_packages = [
   "pants.backend.python",
+  "pants.backend.python.lint.isort",
+  "custom_autoflake",
   "custom_black",
   "custom_flake8",
   "wildcard_imports"
@@ -18,6 +20,12 @@ root_patterns = [
   "/app",
   "/pants-plugins"
 ]
+
+[autoflake]
+args = ["--remove-all-unused-imports"]
+
+[isort]
+config = "pyproject.toml"
 
 [python-infer]
 inits = true

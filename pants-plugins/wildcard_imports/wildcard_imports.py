@@ -141,7 +141,6 @@ async def wildcard_imports(
             )
             for fp in wildcard_import_sources
         )
-        print(wildcard_import_recs)
         get_commands: List[Get] = []
         for import_rec in wildcard_import_recs:
             get_commands.extend(
@@ -170,7 +169,6 @@ async def wildcard_imports(
             return WildcardImports(exit_code=0)
 
         # Reload package info
-        # all_py_files_digest_contents = await Get(DigestContents, PathGlobs(("app/**/*.py",)))
         new_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
 
         # THIS SHOULD NOT FAIL!
@@ -185,10 +183,10 @@ async def wildcard_imports(
                 PythonFileImportRecommendations,
                 PythonFileDuplicateImportRecommendationsRequest,
                 PythonFileDuplicateImportRecommendationsRequest(
-                    file_path=import_rec.python_file_info.path,
-                    python_package_helper=py_package_helper
-                )
-            ) for import_rec in all_import_recs
+                    file_path=import_rec.python_file_info.path, python_package_helper=py_package_helper
+                ),
+            )
+            for import_rec in all_import_recs
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
         workspace.write_digest(digest)

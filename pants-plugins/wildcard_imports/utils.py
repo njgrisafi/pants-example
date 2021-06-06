@@ -41,7 +41,7 @@ def generate_relative_module_key(app_python_file_path: str, include_top_level_pa
 
 def has_symbol_usage(symbol: str, file_content: str) -> bool:
     try:
-        return bool(re.search(r"([^.\n\w]|^| |\n){}+([.|(|)|| ])".format(symbol), file_content))
+        return bool(re.search(r"([^.\n\w]|^| |\n){}+([.|(|)||:])".format(symbol), file_content))
     except Exception:
         return False
 
