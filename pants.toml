@@ -10,6 +10,9 @@ backend_packages = [
   "custom_flake8",
   "wildcard_imports"
 ]
+plugins = [
+  "autoflake>=1.4",
+]
 
 pants_ignore.add = [
   "/.*"
