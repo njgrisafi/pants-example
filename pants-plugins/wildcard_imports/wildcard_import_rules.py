@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Iterable, List, Tuple, Dict
+from typing import Dict, Iterable, List, Tuple
 
 from pants.engine.fs import CreateDigest, Digest, DigestContents, PathGlobs, Paths, Workspace
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule, rule
@@ -53,6 +53,13 @@ class DuplicateImportRecommendationsRequest:
     python_file_info: PythonFileInfo
     duplicate_imports: Tuple[PythonImport, ...]
     duplicate_name: str
+    python_package_helper: PythonPackageHelper
+
+
+@dataclass(frozen=True)
+class MissingImportRecommendationsRequest:
+    python_file_info: PythonFileInfo
+    missing_names: Tuple[str, ...]
     python_package_helper: PythonPackageHelper
 
 
@@ -151,7 +158,7 @@ async def get_file_duplicate_import_recommendations(
     )
 
 
-@rule(desc="Gets duplicate import recommendation")
+@rule(desc="Gets duplicate import recommendations")
 async def get_duplicate_import_recommendations(
     dup_import_rec_req: DuplicateImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
@@ -163,6 +170,13 @@ async def get_duplicate_import_recommendations(
     return PythonFileImportRecommendations(
         python_file_info=dup_import_rec_req.python_file_info, import_recommendations=recs
     )
+
+
+# @rule(desc="Gets missing import recommendations")
+# async def get_missing_import_recommendations(
+#     missing_import_rec_req: MissingImportRecommendationsRequest,
+# ) -> PythonFileImportRecommendations:
+#     ...
 
 
 def rules() -> Iterable[Rule]:

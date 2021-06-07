@@ -195,9 +195,18 @@ async def wildcard_imports(
         all_import_recs: List[PythonFileImportRecommendations] = list(
             set(list(wildcard_import_recs) + list(transitive_import_recs))
         )
-
-        # Preformat changed sources for duplicate import fixes
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in all_import_recs]))
+        workspace.write_digest(digest)
+
+        # Perform changed sources for duplicate import fixes
+        digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
+        res: FmtResult = await Get(
+            FmtResult,
+            AutoflakeRequest,
+            AutoflakeRequest(argv=("--in-place", "--remove-all-unused-imports"), digest=digest),
+        )
+        workspace.write_digest(res.output)
+        digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
         res: FmtResult = await Get(
             FmtResult,
             IsortRequest,
@@ -210,7 +219,7 @@ async def wildcard_imports(
         # Reload updates
         new_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
 
-        # Fix import duplications
+        # Fix import duplicate imports
         py_package_helper = for_python_files(
             python_files_digest_contents=new_py_files_digest_contents,
             include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
@@ -229,34 +238,25 @@ async def wildcard_imports(
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
         workspace.write_digest(digest)
 
-        # Post Wildcard fix formatting
-
-        # Autoflake
-        digest = await Get(Digest, PathGlobs(sources.files))
+        # Isort
+        digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
         res: FmtResult = await Get(
             FmtResult,
-            AutoflakeRequest,
-            AutoflakeRequest(argv=("--in-place", "--remove-all-unused-imports"), digest=digest),
+            IsortRequest,
+            IsortRequest(
+                argv=("--use-parentheses", "--trailing-comma", "--force-grid-wrap=0"), digest=digest
+            ),
         )
         workspace.write_digest(res.output)
 
         # Autoimport
-        digest = await Get(Digest, PathGlobs(sources.files))
-        res: FmtResult = await Get(
-            FmtResult,
-            AutoImportRequest,
-            AutoImportRequest(digest=digest),
-        )
-        workspace.write_digest(res.output)
-
-        # Isort
-        digest = await Get(Digest, PathGlobs(sources.files))
-        res: FmtResult = await Get(
-            FmtResult,
-            IsortRequest,
-            IsortRequest(argv=("--use-parentheses", "--trailing-comma", "--force-grid-wrap=0"), digest=digest),
-        )
-        workspace.write_digest(res.output)
+        # digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
+        # res: FmtResult = await Get(
+        #     FmtResult,
+        #     AutoImportRequest,
+        #     AutoImportRequest(digest=digest),
+        # )
+        # workspace.write_digest(res.output)
         return WildcardImports(exit_code=0)
 
     # Output violating files and exit for failure
