@@ -1,5 +1,8 @@
 import re
 
+import autoflake
+from pyflakes.messages import UndefinedExport, UndefinedName
+
 match_import_star_re = re.compile(rb"from[ ]+(\S+)[ ]+import[ ]+[*][ ]*")
 
 
@@ -48,3 +51,10 @@ def has_symbol_usage(symbol: str, file_content: str) -> bool:
 
 def has_wildcard_import(file_content: bytes) -> bool:
     return bool(match_import_star_re.search(file_content))
+
+
+def has_missing_import(file_content: bytes) -> bool:
+    error_messages = autoflake.check(file_content)
+    for message in error_messages:
+        if isinstance(message, (UndefinedName, UndefinedExport)):
+            return True

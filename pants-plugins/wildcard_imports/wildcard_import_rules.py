@@ -172,11 +172,11 @@ async def get_duplicate_import_recommendations(
     )
 
 
-# @rule(desc="Gets missing import recommendations")
-# async def get_missing_import_recommendations(
-#     missing_import_rec_req: MissingImportRecommendationsRequest,
-# ) -> PythonFileImportRecommendations:
-#     ...
+@rule(desc="Gets missing import recommendations")
+async def get_missing_import_recommendations(
+    missing_import_rec_req: MissingImportRecommendationsRequest,
+) -> PythonFileImportRecommendations:
+    ...
 
 
 def rules() -> Iterable[Rule]:
