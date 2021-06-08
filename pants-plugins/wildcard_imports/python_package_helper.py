@@ -47,7 +47,7 @@ class PythonPackageHelper:
                     names.append(constant_target.name)
 
         if transitive_py_file.module_key in self.ignored_import_names_by_module:
-            names_to_skip = self.ignored_import_names_by_module[source_py_file.module_key]
+            names_to_skip = self.ignored_import_names_by_module[transitive_py_file.module_key]
             names = set(names) - set(names_to_skip)
         return tuple(names)
 

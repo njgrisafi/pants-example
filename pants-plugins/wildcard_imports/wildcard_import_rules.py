@@ -2,9 +2,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Tuple
 
-from pants.engine.fs import CreateDigest, Digest, DigestContents, PathGlobs, Paths, Workspace
-from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule, rule
-from wildcard_imports import python_file_info, utils
+from pants.engine.rules import Get, MultiGet, Rule, collect_rules, rule
+from wildcard_imports import utils
 
 from .import_fixer import ImportFixerHandler, PythonFileImportRecommendations, PythonImportRecommendation
 from .python_file_info import PythonFileInfo, PythonImport

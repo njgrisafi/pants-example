@@ -1,5 +1,6 @@
 import asyncio
 import random
+import time
 from typing import Callable, Dict, Iterable, List, Tuple
 
 from pants.backend.python.target_types import PythonLibrary, PythonSources, PythonTests
@@ -134,30 +135,22 @@ async def wildcard_imports(
 
     # Perform fixes
     if wildcard_imports_subsystem.fix:
-        # Pre-Fix imports for with autoimport
-        # res: FmtResult = await Get(
-        #     FmtResult,
-        #     AutoImportRequest,
-        #     AutoImportRequest(
-        #         digest=sources.snapshot.digest,
-        #     ),
-        # )
-        # workspace.write_digest(res.output)
-
         # Pre-Fix imports for with autoflake
-        # Preformat remainging wildcard import sources for custom fix logic
-        # digest = await Get(Digest, PathGlobs(wildcard_import_sources))
+        digest = await Get(Digest, PathGlobs(wildcard_import_sources))
         res: FmtResult = await Get(
             FmtResult,
             AutoflakeRequest,
             AutoflakeRequest(
                 argv=("--in-place", "--remove-all-unused-imports"),
-                digest=sources.snapshot.digest,
+                digest=digest,
             ),
         )
         workspace.write_digest(res.output)
 
-        # Preform remainging wildcard import sources for custom fix logic
+        # TODO: this is a hack because writting and reloading digest right away is not reliable.
+        time.sleep(1)
+
+        # Preformat imports before custom fix logic runs
         digest = await Get(Digest, PathGlobs(wildcard_import_sources))
         res: FmtResult = await Get(
             FmtResult,
@@ -165,6 +158,9 @@ async def wildcard_imports(
             IsortRequest(argv=("--line-length=100000000", "--combine-star", "--float-to-top"), digest=digest),
         )
         workspace.write_digest(res.output)
+
+        # TODO: this is a hack because writting and reloading digest right away is not reliable.
+        time.sleep(1)
 
         # Run custom fixes
         all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
@@ -224,9 +220,10 @@ async def wildcard_imports(
         # TODO: This is a hack to force pants to not pull from cache.
         # There are occurrences on large files where it doesn't load latest content.
         # Until we figure that out the sleep and glob hack should remain
+        time.sleep(1)
         previous_py_files_digest_contents = all_py_files_digest_contents
         all_py_files_digest_contents = await Get(
-            DigestContents, PathGlobs(["app/**/*.py", f"{random.randint(a=0, b=1000)}"])
+            DigestContents, PathGlobs(["app/**/*.py", f"{random.randint(a=0, b=10000)}"])
         )
         assert all_py_files_digest_contents != previous_py_files_digest_contents, "somethings really wrong"
 
@@ -253,6 +250,9 @@ async def wildcard_imports(
             IsortRequest(argv=("--force-single-line-imports", "--line-length=100000000"), digest=digest),
         )
         workspace.write_digest(res.output)
+
+        # TODO: this is a hack because writting and reloading digest right away is not reliable.
+        time.sleep(1)
 
         # Reload file content
         previous_py_files_digest_contents = all_py_files_digest_contents

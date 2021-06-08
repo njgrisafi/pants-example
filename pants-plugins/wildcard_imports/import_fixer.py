@@ -28,7 +28,7 @@ class PythonFileImportRecommendations:
             if import_rec.source_import:
                 regex_str = import_rec.source_import.import_str.replace("*", "\*")  # noqa: W605
                 if len(import_rec.recommendations) == 0:
-                    content = re.sub(regex_str, "", content)
+                    content = re.sub(f"{regex_str}\n", "", content)
                 else:
                     replacement_import_strs = set(
                         [
@@ -119,7 +119,6 @@ class ImportFixerHandler:
         self, source_python_file_info: PythonFileInfo, transitive_python_file_info: PythonFileInfo
     ) -> Tuple[PythonImport, ...]:
         import_recommendations = []
-
         # Check usage of direct transitive python file names
         names = self.python_package_helper.get_names_used_from_transitive_python_file(
             source_py_file=source_python_file_info, transitive_py_file=transitive_python_file_info
