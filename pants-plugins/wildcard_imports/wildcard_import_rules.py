@@ -4,6 +4,7 @@ from typing import Dict, Iterable, List, Tuple
 
 from pants.engine.fs import CreateDigest, Digest, DigestContents, PathGlobs, Paths, Workspace
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule, rule
+from wildcard_imports import python_file_info, utils
 
 from .import_fixer import ImportFixerHandler, PythonFileImportRecommendations, PythonImportRecommendation
 from .python_file_info import PythonFileInfo, PythonImport
@@ -27,6 +28,11 @@ class PythonFileWildcardImportRecommendationsRequest(PythonFileImportRecommendat
 
 @dataclass(frozen=True)
 class PythonFileDuplicateImportRecommendationsRequest(PythonFileImportRecommendationsRequest):
+    ...
+
+
+@dataclass(frozen=True)
+class PythonFileMissingImportRecommendationsRequest(PythonFileImportRecommendationsRequest):
     ...
 
 
@@ -57,9 +63,8 @@ class DuplicateImportRecommendationsRequest:
 
 
 @dataclass(frozen=True)
-class MissingImportRecommendationsRequest:
-    python_file_info: PythonFileInfo
-    missing_names: Tuple[str, ...]
+class MissingImportRecommendationRequest:
+    missing_name: str
     python_package_helper: PythonPackageHelper
 
 
@@ -173,10 +178,37 @@ async def get_duplicate_import_recommendations(
 
 
 @rule(desc="Gets missing import recommendations")
-async def get_missing_import_recommendations(
-    missing_import_rec_req: MissingImportRecommendationsRequest,
+async def get_file_missing_import_recommendations(
+    py_file_missing_import_rec_req: PythonFileMissingImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
-    ...
+    missing_names = utils.get_missing_import_names(
+        file_content=py_file_missing_import_rec_req.python_file_info.file_content
+    )
+    get_commands: List[Get] = []
+    for name in missing_names:
+        get_commands.append(
+            Get(
+                PythonImportRecommendation,
+                MissingImportRecommendationRequest,
+                MissingImportRecommendationRequest(
+                    missing_name=name,
+                    python_package_helper=py_file_missing_import_rec_req.python_package_helper,
+                ),
+            )
+        )
+    missing_import_recs: Tuple[PythonImportRecommendation, ...] = await MultiGet(get_commands)
+    return PythonFileImportRecommendations(
+        python_file_info=py_file_missing_import_rec_req.python_file_info, import_recommendations=missing_import_recs
+    )
+
+
+@rule(desc="Gets missing import recommendations")
+async def get_missing_import_recommendation(
+    missing_import_rec_req: MissingImportRecommendationRequest,
+) -> PythonImportRecommendation:
+    return ImportFixerHandler(
+        python_package_helper=missing_import_rec_req.python_package_helper
+    ).get_missing_import_recommendation(missing_name=missing_import_rec_req.missing_name)
 
 
 def rules() -> Iterable[Rule]:

@@ -1,9 +1,12 @@
+import importlib
 import re
+from typing import Tuple
 
 import autoflake
 from pyflakes.messages import UndefinedExport, UndefinedName
 
 match_import_star_re = re.compile(rb"from[ ]+(\S+)[ ]+import[ ]+[*][ ]*")
+match_top_level_imports_re = re.compile(r"(^from[ ]+(\S+)[ ]+import[ ]+(.[(\n][^)]*[)]|.*)|^import.*)")
 
 
 def generate_relative_module_key(app_python_file_path: str, include_top_level_package: bool) -> str:
@@ -58,3 +61,39 @@ def has_missing_import(file_content: bytes) -> bool:
     for message in error_messages:
         if isinstance(message, (UndefinedName, UndefinedExport)):
             return True
+
+
+def get_missing_import_names(file_content: str) -> Tuple[str, ...]:
+    error_messages = autoflake.check(file_content)
+    missing_import_names = []
+    for message in error_messages:
+        if isinstance(message, (UndefinedName, UndefinedExport)):
+            missing_import_names.extend(message.message_args)
+    return tuple(missing_import_names)
+
+
+def get_top_level_import_matches(file_context: bytes) -> Tuple[re.Match, ...]:
+    return tuple(match_top_level_imports_re.finditer(file_context))
+
+
+def is_module_package(import_name: str) -> bool:
+    """
+    Checks if import is a package existing in the current PYTHON_PATH.
+
+    Args:
+        name: package name
+
+    Returns:
+        True if import name exists in the current Python_PATH
+        For example:
+        ```python
+            is_module_package(import_name="json")  # Outputs: True
+            is_module_package(import_name="foobarfuzz")  # Outputs: False
+        ```
+    """
+    package_specs = importlib.util.find_spec(import_name)
+    try:
+        importlib.util.module_from_spec(package_specs)
+        return True
+    except AttributeError:
+        return False

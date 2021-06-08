@@ -18,6 +18,12 @@ pants_ignore.add = [
   "/.*"
 ]
 
+ignore_warnings = [
+  "$regex$DeprecationWarning: invalid escape sequence",
+  "$regex$FutureWarning: Possible set union at position"
+]
+
+
 [source]
 root_patterns = [
   "/app",

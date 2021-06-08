@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from pants.engine.fs import FileContent
 
@@ -11,7 +11,7 @@ from .python_package_helper import PythonPackageHelper
 
 @dataclass(frozen=True)
 class PythonImportRecommendation:
-    source_import: PythonImport
+    source_import: Optional[PythonImport]
     recommendations: Tuple[PythonImport, ...]
 
 
@@ -24,14 +24,27 @@ class PythonFileImportRecommendations:
     def fixed_file_content(self) -> FileContent:
         content = self.python_file_info.file_content_str
         for import_rec in self.import_recommendations:
-            regex_str = import_rec.source_import.import_str.replace("*", "\*")  # noqa: W605
-            if len(import_rec.recommendations) == 0:
-                content = re.sub(regex_str, "", content)
-            else:
-                replacement_import_strs = set(
-                    [replacement_import_target.import_str for replacement_import_target in import_rec.recommendations]
+            # Replace source import with recs
+            if import_rec.source_import:
+                regex_str = import_rec.source_import.import_str.replace("*", "\*")  # noqa: W605
+                if len(import_rec.recommendations) == 0:
+                    content = re.sub(regex_str, "", content)
+                else:
+                    replacement_import_strs = set(
+                        [
+                            replacement_import_target.import_str
+                            for replacement_import_target in import_rec.recommendations
+                        ]
+                    )
+                    content = re.sub(regex_str, "\n".join(replacement_import_strs), content)
+            # Add new import recs
+            elif len(import_rec.recommendations) > 0:
+                import_matches = utils.get_top_level_import_matches(content)
+                insert_line = import_matches[-1].span()[1] if len(import_matches) > 0 else 0
+                import_content_to_insert = "\n".join(
+                    [new_import_target.import_str for new_import_target in import_rec.recommendations]
                 )
-                content = re.sub(regex_str, "\n".join(replacement_import_strs), content)
+                content = content[:insert_line] + f"\n{import_content_to_insert}\n" + content[insert_line:]
         return FileContent(path=self.python_file_info.path, content=content.encode())
 
 
@@ -185,3 +198,11 @@ class ImportFixerHandler:
                 )
             )
         return tuple(import_recommendations)
+
+    def get_missing_import_recommendation(self, missing_name: str) -> PythonImportRecommendation:
+        if utils.is_module_package(import_name=missing_name):
+            return PythonImportRecommendation(
+                source_import=None,
+                recommendations=(PythonImport(modules=(), level=0, names=(missing_name,), aliases=()),),
+            )
+        return PythonImportRecommendation(source_import=None, recommendations=())

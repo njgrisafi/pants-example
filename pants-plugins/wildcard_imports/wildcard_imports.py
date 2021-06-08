@@ -1,10 +1,12 @@
+import asyncio
+import random
 from typing import Callable, Dict, Iterable, List, Tuple
 
 from pants.backend.python.target_types import PythonLibrary, PythonSources, PythonTests
 from pants.core.goals.fmt import FmtResult
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.console import Console
-from pants.engine.fs import CreateDigest, Digest, DigestContents, PathGlobs, Workspace
+from pants.engine.fs import CreateDigest, Digest, DigestContents, FileContent, PathGlobs, Workspace
 from pants.engine.goal import Goal, GoalSubsystem, LineOriented
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
 from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
@@ -18,6 +20,7 @@ from .isort_rules import IsortRequest
 from .python_package_helper import for_python_files
 from .wildcard_import_rules import (
     PythonFileDuplicateImportRecommendationsRequest,
+    PythonFileMissingImportRecommendationsRequest,
     PythonFileWildcardImportRecommendationsRequest,
     PythonTransitiveFileImportRecommendationsRequest,
 )
@@ -131,7 +134,19 @@ async def wildcard_imports(
 
     # Perform fixes
     if wildcard_imports_subsystem.fix:
+        # Pre-Fix imports for with autoimport
+        # res: FmtResult = await Get(
+        #     FmtResult,
+        #     AutoImportRequest,
+        #     AutoImportRequest(
+        #         digest=sources.snapshot.digest,
+        #     ),
+        # )
+        # workspace.write_digest(res.output)
+
         # Pre-Fix imports for with autoflake
+        # Preformat remainging wildcard import sources for custom fix logic
+        # digest = await Get(Digest, PathGlobs(wildcard_import_sources))
         res: FmtResult = await Get(
             FmtResult,
             AutoflakeRequest,
@@ -142,19 +157,12 @@ async def wildcard_imports(
         )
         workspace.write_digest(res.output)
 
-        # Update contents for 'import *' patterns
-        digest_contents: DigestContents = await Get(DigestContents, PathGlobs(wildcard_import_sources))
-        wildcard_import_sources = []
-        for file_content in digest_contents:
-            if utils.has_wildcard_import(file_content.content):
-                wildcard_import_sources.append(file_content.path)
-
-        # Preformat remainging wildcard import sources for custom fix logic
+        # Preform remainging wildcard import sources for custom fix logic
         digest = await Get(Digest, PathGlobs(wildcard_import_sources))
         res: FmtResult = await Get(
             FmtResult,
             IsortRequest,
-            IsortRequest(argv=("--line-length=100000000", "--combine-star"), digest=digest),
+            IsortRequest(argv=("--line-length=100000000", "--combine-star", "--float-to-top"), digest=digest),
         )
         workspace.write_digest(res.output)
 
@@ -196,32 +204,35 @@ async def wildcard_imports(
             set(list(wildcard_import_recs) + list(transitive_import_recs))
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in all_import_recs]))
-        workspace.write_digest(digest)
 
         # Perform changed sources for duplicate import fixes
-        digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
         res: FmtResult = await Get(
             FmtResult,
             AutoflakeRequest,
             AutoflakeRequest(argv=("--in-place", "--remove-all-unused-imports"), digest=digest),
         )
-        workspace.write_digest(res.output)
-        digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
         res: FmtResult = await Get(
             FmtResult,
             IsortRequest,
-            IsortRequest(argv=("--force-single-line-imports",), digest=digest),
+            IsortRequest(argv=("--force-single-line-imports", "--line-length=100000000"), digest=res.output),
         )
         workspace.write_digest(res.output)
         if wildcard_imports_subsystem.ignore_duplicate_imports:
             return WildcardImports(exit_code=0)
 
         # Reload updates
-        new_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
+        # TODO: This is a hack to force pants to not pull from cache.
+        # There are occurrences on large files where it doesn't load latest content.
+        # Until we figure that out the sleep and glob hack should remain
+        previous_py_files_digest_contents = all_py_files_digest_contents
+        all_py_files_digest_contents = await Get(
+            DigestContents, PathGlobs(["app/**/*.py", f"{random.randint(a=0, b=1000)}"])
+        )
+        assert all_py_files_digest_contents != previous_py_files_digest_contents, "somethings really wrong"
 
         # Fix import duplicate imports
         py_package_helper = for_python_files(
-            python_files_digest_contents=new_py_files_digest_contents,
+            python_files_digest_contents=all_py_files_digest_contents,
             include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
             ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
         )
@@ -236,27 +247,41 @@ async def wildcard_imports(
             for import_rec in all_import_recs
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
-        workspace.write_digest(digest)
-
-        # Isort
-        digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
         res: FmtResult = await Get(
             FmtResult,
             IsortRequest,
-            IsortRequest(
-                argv=("--use-parentheses", "--trailing-comma", "--force-grid-wrap=0"), digest=digest
-            ),
+            IsortRequest(argv=("--force-single-line-imports", "--line-length=100000000"), digest=digest),
         )
         workspace.write_digest(res.output)
 
-        # Autoimport
-        # digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
-        # res: FmtResult = await Get(
-        #     FmtResult,
-        #     AutoImportRequest,
-        #     AutoImportRequest(digest=digest),
-        # )
-        # workspace.write_digest(res.output)
+        # Reload file content
+        previous_py_files_digest_contents = all_py_files_digest_contents
+        all_py_files_digest_contents = await Get(
+            DigestContents, PathGlobs(["app/**/*.py", f"{random.randint(a=0, b=1000)}"])
+        )
+        py_package_helper = for_python_files(
+            python_files_digest_contents=all_py_files_digest_contents,
+            include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
+            ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
+        )
+        missing_import_files: List[FileContent] = []
+        digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
+        digest_contents: DigestContents = await Get(DigestContents, Digest, digest)
+        for file_content in digest_contents:
+            if utils.has_missing_import(file_content=file_content.content):
+                missing_import_files.append(file_content)
+        missing_import_recs: Tuple[PythonFileImportRecommendations, ...] = await MultiGet(
+            Get(
+                PythonFileImportRecommendations,
+                PythonFileMissingImportRecommendationsRequest,
+                PythonFileMissingImportRecommendationsRequest(
+                    file_path=fc.path, python_package_helper=py_package_helper
+                ),
+            )
+            for fc in missing_import_files
+        )
+        digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in missing_import_recs]))
+        workspace.write_digest(digest)
         return WildcardImports(exit_code=0)
 
     # Output violating files and exit for failure
