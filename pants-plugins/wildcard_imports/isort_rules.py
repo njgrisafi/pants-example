@@ -12,7 +12,6 @@ from pants.backend.python.util_rules.pex import (
     VenvPexProcess,
 )
 from pants.core.goals.fmt import FmtResult
-from pants.core.util_rules.source_files import SourceFiles
 from pants.engine.fs import Digest, Snapshot
 from pants.engine.internals.selectors import MultiGet
 from pants.engine.process import Process, ProcessResult

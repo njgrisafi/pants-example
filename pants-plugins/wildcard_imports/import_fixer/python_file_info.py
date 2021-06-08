@@ -11,7 +11,7 @@ class PythonImport:
     aliases: Tuple[str, ...]
 
     @property
-    def is_star_import(self) -> bool:
+    def is_wildcard_import(self) -> bool:
         return self.names == ("*",)
 
     @property
@@ -64,20 +64,20 @@ class PythonFileInfo:
         return "__init__.py" in self.path
 
     def uses_import(self, import_str: str) -> bool:
-        for import_target in self.imports:
-            if import_target.import_str == import_str:
+        for py_import in self.imports:
+            if py_import.import_str == import_str:
                 return True
         return False
 
     def has_name(self, name: str) -> bool:
-        for class_target in self.classes:
-            if name == class_target.name:
+        for py_class in self.classes:
+            if name == py_class.name:
                 return True
-        for function_target in self.functions:
-            if name == function_target.name:
+        for py_function in self.functions:
+            if name == py_function.name:
                 return True
-        for constant_target in self.constants:
-            if name == constant_target.name:
+        for py_constant in self.constants:
+            if name == py_constant.name:
                 return True
         return False
 

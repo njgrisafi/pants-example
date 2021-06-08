@@ -1,4 +1,3 @@
-import asyncio
 import random
 import time
 from typing import Callable, Dict, Iterable, List, Tuple
@@ -12,14 +11,13 @@ from pants.engine.goal import Goal, GoalSubsystem, LineOriented
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
 from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
 from pants.util.filtering import and_filters, create_filters
-from wildcard_imports.autoimport_rules import AutoImportRequest
-
-from . import utils
-from .autoflake_rules import AutoflakeRequest
-from .import_fixer import PythonFileImportRecommendations
-from .isort_rules import IsortRequest
-from .python_package_helper import for_python_files
-from .wildcard_import_rules import (
+from wildcard_imports.autoflake_rules import AutoflakeRequest
+from wildcard_imports.import_fixer import utils
+from wildcard_imports.import_fixer.import_fixer_handler import PythonFileImportRecommendations
+from wildcard_imports.import_fixer.python_package_helper import for_python_files
+from wildcard_imports.isort_rules import IsortRequest
+from wildcard_imports.wildcard_imports_field import WildcardImportsField
+from wildcard_imports.wildcard_imports_rules import (
     PythonFileDuplicateImportRecommendationsRequest,
     PythonFileMissingImportRecommendationsRequest,
     PythonFileWildcardImportRecommendationsRequest,
@@ -101,18 +99,17 @@ allowed_target_types = RegisteredTargetTypes.create({tgt_type for tgt_type in [P
 async def wildcard_imports(
     console: Console, wildcard_imports_subsystem: WildcardImportsSubsystem, targets: Targets, workspace: Workspace
 ) -> WildcardImports:
-    # Filter target types
+    # Filter targets to run on
     def filter_target_type(target_type: str) -> TargetFilter:
         if target_type not in allowed_target_types.aliases:
             raise UnrecognizedTargetTypeException(target_type, allowed_target_types)
         return lambda tgt: tgt.alias == target_type
-
     anded_filter: TargetFilter = and_filters(
         [
             *(create_filters(wildcard_imports_subsystem.target_types, filter_target_type)),
         ]
     )
-    filtered_targets = [target for target in targets if anded_filter(target)]
+    filtered_targets = [target for target in targets if anded_filter(target) and target.get(WildcardImportsField).value]
 
     # Get sources and contents
     sources: SourceFiles = await Get(
@@ -133,7 +130,7 @@ async def wildcard_imports(
     if len(wildcard_import_sources) == 0:
         return WildcardImports(exit_code=0)
 
-    # Perform fixes
+    # Run custom fixes
     if wildcard_imports_subsystem.fix:
         # Pre-Fix imports for with autoflake
         digest = await Get(Digest, PathGlobs(wildcard_import_sources))
@@ -147,10 +144,13 @@ async def wildcard_imports(
         )
         workspace.write_digest(res.output)
 
+        ##########################
+        # Expand Wildcard Imports
+        ##########################
         # TODO: this is a hack because writting and reloading digest right away is not reliable.
         time.sleep(1)
 
-        # Preformat imports before custom fix logic runs
+        # Pre-Format imports for simpler runs
         digest = await Get(Digest, PathGlobs(wildcard_import_sources))
         res: FmtResult = await Get(
             FmtResult,
@@ -162,7 +162,7 @@ async def wildcard_imports(
         # TODO: this is a hack because writting and reloading digest right away is not reliable.
         time.sleep(1)
 
-        # Run custom fixes
+        # Load file content and get wildcard import reccommendations
         all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
         py_package_helper = for_python_files(
             python_files_digest_contents=all_py_files_digest_contents,
@@ -173,10 +173,12 @@ async def wildcard_imports(
             Get(
                 PythonFileImportRecommendations,
                 PythonFileWildcardImportRecommendationsRequest,
-                PythonFileWildcardImportRecommendationsRequest(file_path=fp, python_package_helper=py_package_helper),
+                PythonFileWildcardImportRecommendationsRequest(file_path=fp, py_package_helper=py_package_helper),
             )
             for fp in wildcard_import_sources
         )
+
+        # Get transitive file recommendations for changed files
         get_commands: List[Get] = []
         for import_rec in wildcard_import_recs:
             get_commands.extend(
@@ -185,13 +187,13 @@ async def wildcard_imports(
                         PythonFileImportRecommendations,
                         PythonTransitiveFileImportRecommendationsRequest,
                         PythonTransitiveFileImportRecommendationsRequest(
-                            transitive_python_file_info=transitive_python_file_info,
-                            python_file_import_reccomendations=import_rec,
-                            python_package_helper=py_package_helper,
+                            transitive_py_file_info=transitive_py_file_info,
+                            py_file_import_reccomendations=import_rec,
+                            py_package_helper=py_package_helper,
                         ),
                     )
-                    for transitive_python_file_info in py_package_helper.get_transtive_python_files_by_wildcard_import(
-                        source_python_file_info=import_rec.python_file_info
+                    for transitive_py_file_info in py_package_helper.get_transtive_python_files_by_wildcard_import(
+                        source_py_file_info=import_rec.py_file_info
                     )
                 )
             )
@@ -201,22 +203,29 @@ async def wildcard_imports(
         )
         digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in all_import_recs]))
 
-        # Perform changed sources for duplicate import fixes
+        # Run auto flake on changed files
         res: FmtResult = await Get(
             FmtResult,
             AutoflakeRequest,
             AutoflakeRequest(argv=("--in-place", "--remove-all-unused-imports"), digest=digest),
         )
+        workspace.write_digest(res.output)
+
+        ##########################
+        # Fix Duplicate Imports
+        ##########################
+
+        # Pre-format imports with isort for simplier duplication fixes
+        # TODO: this sleep is a hack because writting and reloading digest right away is not reliable.
+        time.sleep(1)
+        digest = await Get(Digest, PathGlobs(wildcard_import_sources))
         res: FmtResult = await Get(
             FmtResult,
             IsortRequest,
-            IsortRequest(argv=("--force-single-line-imports", "--line-length=100000000"), digest=res.output),
+            IsortRequest(argv=("--force-single-line-imports", "--line-length=100000000"), digest=digest),
         )
         workspace.write_digest(res.output)
-        if wildcard_imports_subsystem.ignore_duplicate_imports:
-            return WildcardImports(exit_code=0)
 
-        # Reload updates
         # TODO: This is a hack to force pants to not pull from cache.
         # There are occurrences on large files where it doesn't load latest content.
         # Until we figure that out the sleep and glob hack should remain
@@ -238,7 +247,7 @@ async def wildcard_imports(
                 PythonFileImportRecommendations,
                 PythonFileDuplicateImportRecommendationsRequest,
                 PythonFileDuplicateImportRecommendationsRequest(
-                    file_path=import_rec.python_file_info.path, python_package_helper=py_package_helper
+                    file_path=import_rec.py_file_info.path, py_package_helper=py_package_helper
                 ),
             )
             for import_rec in all_import_recs
@@ -251,10 +260,12 @@ async def wildcard_imports(
         )
         workspace.write_digest(res.output)
 
-        # TODO: this is a hack because writting and reloading digest right away is not reliable.
-        time.sleep(1)
-
+        ##########################
+        # Fix Missing Imports
+        #########################
         # Reload file content
+        # TODO: this sleep is a hack because writting and reloading digest right away is not reliable.
+        time.sleep(1)
         previous_py_files_digest_contents = all_py_files_digest_contents
         all_py_files_digest_contents = await Get(
             DigestContents, PathGlobs(["app/**/*.py", f"{random.randint(a=0, b=1000)}"])
@@ -265,7 +276,7 @@ async def wildcard_imports(
             ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
         )
         missing_import_files: List[FileContent] = []
-        digest = await Get(Digest, PathGlobs([import_rec.python_file_info.path for import_rec in all_import_recs]))
+        digest = await Get(Digest, PathGlobs([import_rec.py_file_info.path for import_rec in all_import_recs]))
         digest_contents: DigestContents = await Get(DigestContents, Digest, digest)
         for file_content in digest_contents:
             if utils.has_missing_import(file_content=file_content.content):
@@ -275,7 +286,7 @@ async def wildcard_imports(
                 PythonFileImportRecommendations,
                 PythonFileMissingImportRecommendationsRequest,
                 PythonFileMissingImportRecommendationsRequest(
-                    file_path=fc.path, python_package_helper=py_package_helper
+                    file_path=fc.path, py_package_helper=py_package_helper
                 ),
             )
             for fc in missing_import_files

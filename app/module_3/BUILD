@@ -1,1 +1,3 @@
-python_library()
+python_library(
+    wildcard_imports=True
+)

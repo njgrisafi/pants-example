@@ -3,21 +3,24 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Tuple
 
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, rule
-from wildcard_imports import utils
-
-from .import_fixer import ImportFixerHandler, PythonFileImportRecommendations, PythonImportRecommendation
-from .python_file_info import PythonFileInfo, PythonImport
-from .python_package_helper import PythonPackageHelper
+from wildcard_imports.import_fixer import utils
+from wildcard_imports.import_fixer.import_fixer_handler import (
+    ImportFixerHandler,
+    PythonFileImportRecommendations,
+    PythonImportRecommendation,
+)
+from wildcard_imports.import_fixer.python_file_info import PythonFileInfo, PythonImport
+from wildcard_imports.import_fixer.python_package_helper import PythonPackageHelper
 
 
 @dataclass(frozen=True)
 class PythonFileImportRecommendationsRequest:
     file_path: str
-    python_package_helper: PythonPackageHelper
+    py_package_helper: PythonPackageHelper
 
     @property
-    def python_file_info(self) -> PythonFileInfo:
-        return self.python_package_helper.get_python_file_info_from_file_path(file_path=self.file_path)
+    def py_file_info(self) -> PythonFileInfo:
+        return self.py_package_helper.get_python_file_info_from_file_path(file_path=self.file_path)
 
 
 @dataclass(frozen=True)
@@ -37,34 +40,34 @@ class PythonFileMissingImportRecommendationsRequest(PythonFileImportRecommendati
 
 @dataclass(frozen=True)
 class WildcardImportRecommendationsRequest:
-    source_file_info: PythonFileInfo
+    source_py_file_info: PythonFileInfo
     wildcard_import: PythonImport
-    python_package_helper: PythonPackageHelper
+    py_package_helper: PythonPackageHelper
 
 
 @dataclass(frozen=True)
 class PythonTransitiveFileImportRecommendationsRequest:
-    transitive_python_file_info: PythonFileInfo
-    python_file_import_reccomendations: PythonFileImportRecommendations
-    python_package_helper: PythonPackageHelper
+    transitive_py_file_info: PythonFileInfo
+    py_file_import_reccomendations: PythonFileImportRecommendations
+    py_package_helper: PythonPackageHelper
 
     @property
-    def python_file_info(self) -> PythonFileInfo:
-        return self.python_file_import_reccomendations.python_file_info
+    def py_file_info(self) -> PythonFileInfo:
+        return self.py_file_import_reccomendations.py_file_info
 
 
 @dataclass(frozen=True)
 class DuplicateImportRecommendationsRequest:
-    python_file_info: PythonFileInfo
+    py_file_info: PythonFileInfo
     duplicate_imports: Tuple[PythonImport, ...]
     duplicate_name: str
-    python_package_helper: PythonPackageHelper
+    py_package_helper: PythonPackageHelper
 
 
 @dataclass(frozen=True)
 class MissingImportRecommendationRequest:
     missing_name: str
-    python_package_helper: PythonPackageHelper
+    py_package_helper: PythonPackageHelper
 
 
 @dataclass(frozen=True)
@@ -78,22 +81,22 @@ async def get_file_import_recommendations(
     py_file_import_recommendations_req: PythonFileWildcardImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
     get_commands: List[Get] = []
-    for python_import in py_file_import_recommendations_req.python_file_info.imports:
-        if python_import.is_star_import:
+    for python_import in py_file_import_recommendations_req.py_file_info.imports:
+        if python_import.is_wildcard_import:
             get_commands.append(
                 Get(
                     PythonImportRecommendation,
                     WildcardImportRecommendationsRequest,
                     WildcardImportRecommendationsRequest(
-                        source_file_info=py_file_import_recommendations_req.python_file_info,
+                        source_py_file_info=py_file_import_recommendations_req.py_file_info,
                         wildcard_import=python_import,
-                        python_package_helper=py_file_import_recommendations_req.python_package_helper,
+                        py_package_helper=py_file_import_recommendations_req.py_package_helper,
                     ),
                 )
             )
     import_recommendations = await MultiGet(get_commands)
     return PythonFileImportRecommendations(
-        python_file_info=py_file_import_recommendations_req.python_file_info,
+        py_file_info=py_file_import_recommendations_req.py_file_info,
         import_recommendations=import_recommendations,
     )
 
@@ -103,9 +106,9 @@ async def get_wildcard_import_recommendation(
     wildcard_import_rec_req: WildcardImportRecommendationsRequest,
 ) -> PythonImportRecommendation:
     recs = ImportFixerHandler(
-        python_package_helper=wildcard_import_rec_req.python_package_helper
-    ).get_star_import_recommendation(
-        source_python_file_info=wildcard_import_rec_req.source_file_info,
+        py_package_helper=wildcard_import_rec_req.py_package_helper
+    ).get_wildcard_import_recommendation(
+        source_py_file_info=wildcard_import_rec_req.source_py_file_info,
         python_wildcard_import=wildcard_import_rec_req.wildcard_import,
     )
     return PythonImportRecommendation(source_import=wildcard_import_rec_req.wildcard_import, recommendations=recs)
@@ -116,10 +119,10 @@ async def get_file_transitive_import_recommendations(
     py_transitive_file_import_rec_req: PythonTransitiveFileImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
     return ImportFixerHandler(
-        python_package_helper=py_transitive_file_import_rec_req.python_package_helper
+        py_package_helper=py_transitive_file_import_rec_req.py_package_helper
     ).get_transitive_python_file_import_recommendations(
-        python_file_info=py_transitive_file_import_rec_req.python_file_info,
-        transitive_python_file=py_transitive_file_import_rec_req.transitive_python_file_info,
+        py_file_info=py_transitive_file_import_rec_req.py_file_info,
+        transitive_py_file_info=py_transitive_file_import_rec_req.transitive_py_file_info,
     )
 
 
@@ -128,7 +131,7 @@ async def get_file_duplicate_import_recommendations(
     py_file_dup_import_rec_req: PythonFileDuplicateImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
     imports_by_names: Dict[str, List[PythonImport]] = defaultdict(list)
-    for python_import in py_file_dup_import_rec_req.python_file_info.imports:
+    for python_import in py_file_dup_import_rec_req.py_file_info.imports:
         for name in python_import.names:
             imports_by_names[name].append(python_import)
 
@@ -145,10 +148,10 @@ async def get_file_duplicate_import_recommendations(
                 PythonFileImportRecommendations,
                 DuplicateImportRecommendationsRequest,
                 DuplicateImportRecommendationsRequest(
-                    python_file_info=py_file_dup_import_rec_req.python_file_info,
+                    py_file_info=py_file_dup_import_rec_req.py_file_info,
                     duplicate_imports=tuple(python_imports),
                     duplicate_name=name,
-                    python_package_helper=py_file_dup_import_rec_req.python_package_helper,
+                    py_package_helper=py_file_dup_import_rec_req.py_package_helper,
                 ),
             )
         )
@@ -158,7 +161,7 @@ async def get_file_duplicate_import_recommendations(
     for file_import_rec in dup_file_import_recs:
         merged_recommendations = tuple(set(list(merged_recommendations) + list(file_import_rec.import_recommendations)))
     return PythonFileImportRecommendations(
-        python_file_info=py_file_dup_import_rec_req.python_file_info, import_recommendations=merged_recommendations
+        py_file_info=py_file_dup_import_rec_req.py_file_info, import_recommendations=merged_recommendations
     )
 
 
@@ -167,12 +170,12 @@ async def get_duplicate_import_recommendations(
     dup_import_rec_req: DuplicateImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
     recs = ImportFixerHandler(
-        python_package_helper=dup_import_rec_req.python_package_helper
+        py_package_helper=dup_import_rec_req.py_package_helper
     ).get_file_duplicate_import_recommendations(
         duplicate_imports=dup_import_rec_req.duplicate_imports, duplicate_name=dup_import_rec_req.duplicate_name
     )
     return PythonFileImportRecommendations(
-        python_file_info=dup_import_rec_req.python_file_info, import_recommendations=recs
+        py_file_info=dup_import_rec_req.py_file_info, import_recommendations=recs
     )
 
 
@@ -181,7 +184,7 @@ async def get_file_missing_import_recommendations(
     py_file_missing_import_rec_req: PythonFileMissingImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
     missing_names = utils.get_missing_import_names(
-        file_content=py_file_missing_import_rec_req.python_file_info.file_content
+        file_content=py_file_missing_import_rec_req.py_file_info.file_content
     )
     get_commands: List[Get] = []
     for name in missing_names:
@@ -191,13 +194,13 @@ async def get_file_missing_import_recommendations(
                 MissingImportRecommendationRequest,
                 MissingImportRecommendationRequest(
                     missing_name=name,
-                    python_package_helper=py_file_missing_import_rec_req.python_package_helper,
+                    py_package_helper=py_file_missing_import_rec_req.py_package_helper,
                 ),
             )
         )
     missing_import_recs: Tuple[PythonImportRecommendation, ...] = await MultiGet(get_commands)
     return PythonFileImportRecommendations(
-        python_file_info=py_file_missing_import_rec_req.python_file_info, import_recommendations=missing_import_recs
+        py_file_info=py_file_missing_import_rec_req.py_file_info, import_recommendations=missing_import_recs
     )
 
 
@@ -206,7 +209,7 @@ async def get_missing_import_recommendation(
     missing_import_rec_req: MissingImportRecommendationRequest,
 ) -> PythonImportRecommendation:
     return ImportFixerHandler(
-        python_package_helper=missing_import_rec_req.python_package_helper
+        py_package_helper=missing_import_rec_req.py_package_helper
     ).get_missing_import_recommendation(missing_name=missing_import_rec_req.missing_name)
 
 
