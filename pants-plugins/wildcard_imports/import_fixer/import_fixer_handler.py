@@ -29,20 +29,13 @@ class PythonFileImportRecommendations:
                 if len(import_rec.recommendations) == 0:
                     content = re.sub(f"{regex_str}\n", "", content)
                 else:
-                    replacement_import_strs = set(
-                        [
-                            py_import.import_str
-                            for py_import in import_rec.recommendations
-                        ]
-                    )
+                    replacement_import_strs = set([py_import.import_str for py_import in import_rec.recommendations])
                     content = re.sub(regex_str, "\n".join(replacement_import_strs), content)
             # Add new import recs
             elif len(import_rec.recommendations) > 0:
                 import_matches = utils.get_top_level_import_matches(content)
                 insert_line = import_matches[-1].span()[1] if len(import_matches) > 0 else 0
-                import_content_to_insert = "\n".join(
-                    [py_import.import_str for py_import in import_rec.recommendations]
-                )
+                import_content_to_insert = "\n".join([py_import.import_str for py_import in import_rec.recommendations])
                 content = content[:insert_line] + f"\n{import_content_to_insert}\n" + content[insert_line:]
         return FileContent(path=self.py_file_info.path, content=content.encode())
 
@@ -83,9 +76,7 @@ class ImportFixerHandler:
                 continue
             visited.append(py_import.modules_str)
             try:
-                transitive_python_file_info = self.py_package_helper.python_file_info_by_module[
-                    py_import.modules_str
-                ]
+                transitive_python_file_info = self.py_package_helper.python_file_info_by_module[py_import.modules_str]
                 import_recommendations.extend(
                     self.get_transitive_import_recommendations(
                         source_python_file_info=source_py_file_info,
@@ -165,10 +156,7 @@ class ImportFixerHandler:
     ) -> Tuple[PythonImportRecommendation, ...]:
         direct_name_definitions: List[PythonImport] = []
         for duplicate_import in duplicate_imports:
-            if (
-                f"{duplicate_import.modules_str}.{duplicate_name}"
-                in self.py_package_helper.python_file_info_by_module
-            ):
+            if f"{duplicate_import.modules_str}.{duplicate_name}" in self.py_package_helper.python_file_info_by_module:
                 direct_name_definitions.append(duplicate_import)
             elif duplicate_import.modules_str in self.py_package_helper.python_file_info_by_module:
                 file_info = self.py_package_helper.python_file_info_by_module[duplicate_import.modules_str]
@@ -203,4 +191,13 @@ class ImportFixerHandler:
                 source_import=None,
                 recommendations=(PythonImport(modules=(), level=0, names=(missing_name,), aliases=()),),
             )
+
+        for module_str, py_file_info in self.py_package_helper.python_file_info_by_module.items():
+            if py_file_info.has_name(missing_name):
+                return PythonImportRecommendation(
+                    source_import=None,
+                    recommendations=(
+                        PythonImport(modules=tuple(module_str.split(".")), level=0, names=(missing_name,), aliases=()),
+                    ),
+                )
         return PythonImportRecommendation(source_import=None, recommendations=())

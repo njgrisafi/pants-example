@@ -47,7 +47,7 @@ def generate_relative_module_key(app_python_file_path: str, include_top_level_pa
 
 def has_symbol_usage(symbol: str, file_content: str) -> bool:
     try:
-        return bool(re.search(r"([^.\n\w]|^| |\n){}+([.|(|)||:])".format(symbol), file_content))
+        return bool(re.search(r"([^.\n\w]|^| |\n){}+([.|(|)||:|,])".format(symbol), file_content))
     except Exception:
         return False
 
@@ -69,7 +69,7 @@ def get_missing_import_names(file_content: str) -> Tuple[str, ...]:
     for message in error_messages:
         if isinstance(message, (UndefinedName, UndefinedExport)):
             missing_import_names.extend(message.message_args)
-    return tuple(missing_import_names)
+    return tuple(set(missing_import_names))
 
 
 def get_top_level_import_matches(file_context: bytes) -> Tuple[re.Match, ...]:

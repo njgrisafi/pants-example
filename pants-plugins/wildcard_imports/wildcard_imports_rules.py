@@ -174,9 +174,7 @@ async def get_duplicate_import_recommendations(
     ).get_file_duplicate_import_recommendations(
         duplicate_imports=dup_import_rec_req.duplicate_imports, duplicate_name=dup_import_rec_req.duplicate_name
     )
-    return PythonFileImportRecommendations(
-        py_file_info=dup_import_rec_req.py_file_info, import_recommendations=recs
-    )
+    return PythonFileImportRecommendations(py_file_info=dup_import_rec_req.py_file_info, import_recommendations=recs)
 
 
 @rule(desc="Gets missing import recommendations")

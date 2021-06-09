@@ -5,8 +5,8 @@ from wildcard_imports import (
     autoflake_rules,
     isort_rules,
     wildcard_imports,
-    wildcard_imports_field,
     wildcard_imports_rules,
+    wildcard_imports_skip_field,
 )
 
 
@@ -16,5 +16,5 @@ def rules() -> Iterable[Rule]:
         *wildcard_imports_rules.rules(),
         *isort_rules.rules(),
         *autoflake_rules.rules(),
-        *wildcard_imports_field.rules()
+        *wildcard_imports_skip_field.rules(),
     ]
