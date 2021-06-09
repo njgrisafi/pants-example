@@ -9,14 +9,14 @@ match_import_star_re = re.compile(rb"from[ ]+(\S+)[ ]+import[ ]+[*][ ]*")
 match_top_level_imports_re = re.compile(r"(^from[ ]+(\S+)[ ]+import[ ]+(.[(\n][^)]*[)]|.*)|^import.*)")
 
 
-def generate_relative_module_key(app_python_file_path: str, include_top_level_package: bool) -> str:
+def generate_relative_module_key(py_file_path: str, include_top_level_package: bool) -> str:
     """
     Generates a relative module key that can be used with import statements.
 
     For example:
     ```
     generate_relative_module_key(
-        app_python_file_path="app/module_2/a.py",
+        py_file_path="app/module_2/a.py",
         include_top_level_package=True
     )
     ```
@@ -25,23 +25,23 @@ def generate_relative_module_key(app_python_file_path: str, include_top_level_pa
     Without top level package:
     ```
     generate_relative_module_key(
-        app_python_file_path="app/module_2/a.py",
+        py_file_path="app/module_2/a.py",
         include_top_level_package=False
     )
     ```
     Outputs: `module_2.a`
 
     Args:
-        app_python_file_path (str): Relative path to python file.
+        py_file_path (str): Relative path to python file from build root.
         include_top_level_package (bool): True to include top level packages in module keys.
 
     Returns:
         str: Normalized module key that can be used for python import statements
     """
-    relative_path = app_python_file_path
+    relative_path = py_file_path
     if include_top_level_package is False:
-        app_root = app_python_file_path.split("/")[0]
-        relative_path = app_python_file_path.split(f"{app_root}/")[-1]
+        app_root = py_file_path.split("/")[0]
+        relative_path = py_file_path.split(f"{app_root}/")[-1]
     return relative_path.split(".py")[0].replace("/", ".").replace(".__init__", "")
 
 

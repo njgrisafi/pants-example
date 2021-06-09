@@ -6,29 +6,14 @@ from pants.backend.python.target_types import PythonLibrary, PythonSources, Pyth
 from pants.core.goals.fmt import FmtResult
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.console import Console
-from pants.engine.fs import (
-    CreateDigest,
-    Digest,
-    DigestContents,
-    FileContent,
-    PathGlobs,
-    Workspace,
-)
+from pants.engine.fs import CreateDigest, Digest, DigestContents, FileContent, PathGlobs, Workspace
 from pants.engine.goal import Goal, GoalSubsystem, LineOriented
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
-from pants.engine.target import (
-    RegisteredTargetTypes,
-    Sources,
-    Target,
-    Targets,
-    UnrecognizedTargetTypeException,
-)
+from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
 from pants.util.filtering import and_filters, create_filters
 from wildcard_imports.autoflake_rules import AutoflakeRequest
 from wildcard_imports.import_fixer import utils
-from wildcard_imports.import_fixer.import_fixer_handler import (
-    PythonFileImportRecommendations,
-)
+from wildcard_imports.import_fixer.import_fixer_handler import PythonFileImportRecommendations
 from wildcard_imports.import_fixer.python_package_helper import for_python_files
 from wildcard_imports.isort_rules import IsortRequest
 from wildcard_imports.wildcard_imports_rules import (
@@ -180,7 +165,7 @@ async def wildcard_imports(
     # Load file content and get wildcard import reccommendations
     all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
     py_package_helper = for_python_files(
-        python_files_digest_contents=all_py_files_digest_contents,
+        py_files_digest_contents=all_py_files_digest_contents,
         include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
         ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
     )
@@ -252,7 +237,7 @@ async def wildcard_imports(
 
     # Fix import duplicate imports
     py_package_helper = for_python_files(
-        python_files_digest_contents=all_py_files_digest_contents,
+        py_files_digest_contents=all_py_files_digest_contents,
         include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
         ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
     )
@@ -285,7 +270,7 @@ async def wildcard_imports(
         DigestContents, PathGlobs(["app/**/*.py", f"{random.randint(a=0, b=1000)}"])
     )
     py_package_helper = for_python_files(
-        python_files_digest_contents=all_py_files_digest_contents,
+        py_files_digest_contents=all_py_files_digest_contents,
         include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
         ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
     )

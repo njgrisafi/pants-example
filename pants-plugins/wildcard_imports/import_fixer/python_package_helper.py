@@ -5,30 +5,26 @@ from typing import Dict, List, Tuple
 from pants.engine.fs import DigestContents
 from pants.util.frozendict import FrozenDict
 from wildcard_imports.import_fixer import utils
-from wildcard_imports.import_fixer.python_file_info import (
-    PythonFileInfo,
-    PythonImport,
-    from_python_file_path,
-)
+from wildcard_imports.import_fixer.python_file_info import PythonFileInfo, PythonImport, from_python_file_path
 
 
 @dataclass(frozen=True)
 class PythonPackageHelper:
     include_top_level_package: bool
-    python_file_info_by_module: FrozenDict[str, PythonFileInfo]
-    python_file_info_by_import_star: FrozenDict[str, Tuple[PythonFileInfo, ...]]
+    py_file_info_by_module: FrozenDict[str, PythonFileInfo]
+    py_file_info_by_import_star: FrozenDict[str, Tuple[PythonFileInfo, ...]]
     ignored_import_names_by_module: FrozenDict[str, Tuple[str, ...]]
 
     def get_python_file_info_from_file_path(self, file_path: str) -> PythonFileInfo:
         module_key = utils.generate_relative_module_key(
-            app_python_file_path=file_path, include_top_level_package=self.include_top_level_package
+            py_file_path=file_path, include_top_level_package=self.include_top_level_package
         )
-        return self.python_file_info_by_module[module_key]
+        return self.py_file_info_by_module[module_key]
 
     def get_transtive_python_files_by_wildcard_import(
         self, source_py_file_info: PythonFileInfo
     ) -> Tuple[PythonFileInfo, ...]:
-        return self.python_file_info_by_import_star.get(f"from {source_py_file_info.module_key} import *", [])
+        return self.py_file_info_by_import_star.get(f"from {source_py_file_info.module_key} import *", [])
 
     def get_names_used_from_transitive_python_file(
         self, source_py_file: PythonFileInfo, transitive_py_file: PythonFileInfo
@@ -60,9 +56,9 @@ class PythonPackageHelper:
         py_imports_used = []
         for py_import in transitive_py_file.imports:
             defined_names = py_import.names
-            if py_import.modules_str in self.python_file_info_by_module:
+            if py_import.modules_str in self.py_file_info_by_module:
                 defined_names = self.get_python_file_defined_names_from_import(
-                    python_import=py_import, py_file=self.python_file_info_by_module[py_import.modules_str]
+                    py_import=py_import, py_file=self.py_file_info_by_module[py_import.modules_str]
                 )
             names_used = []
             for name in defined_names:
@@ -83,10 +79,10 @@ class PythonPackageHelper:
         return tuple(py_imports_used)
 
     def get_python_file_defined_names_from_import(
-        self, python_import: PythonImport, py_file: PythonFileInfo
+        self, py_import: PythonImport, py_file: PythonFileInfo
     ) -> List[str]:
         defined_names = []
-        for name in python_import.names:
+        for name in py_import.names:
             if py_file.has_name(name):
                 defined_names.append(name)
         return defined_names
@@ -118,18 +114,18 @@ def unwind_relative_imports(py_file_info_by_module: Dict[str, PythonFileInfo]) -
 
 
 def for_python_files(
-    python_files_digest_contents: DigestContents,
+    py_files_digest_contents: DigestContents,
     include_top_level_package: bool,
     ignored_import_names_by_module: Dict[str, Tuple[str, ...]] = {},
 ) -> PythonPackageHelper:
     # Generate py_file_info_by_module mapping and normalize relative imports
     file_info_by_module: Dict[str, PythonFileInfo] = {}
-    for file_content in python_files_digest_contents:
+    for file_content in py_files_digest_contents:
         result_file_info = from_python_file_path(
             file_path=file_content.path,
             file_content=file_content.content,
             module_key=utils.generate_relative_module_key(
-                app_python_file_path=file_content.path, include_top_level_package=include_top_level_package
+                py_file_path=file_content.path, include_top_level_package=include_top_level_package
             ),
         )
         file_info_by_module[result_file_info.module_key] = result_file_info
@@ -145,7 +141,7 @@ def for_python_files(
                 file_info_by_import_star[py_import.import_str] = tuple(vals)
     return PythonPackageHelper(
         include_top_level_package=include_top_level_package,
-        python_file_info_by_module=FrozenDict(file_info_by_module),
-        python_file_info_by_import_star=FrozenDict(file_info_by_import_star),
+        py_file_info_by_module=FrozenDict(file_info_by_module),
+        py_file_info_by_import_star=FrozenDict(file_info_by_import_star),
         ignored_import_names_by_module=FrozenDict(ignored_import_names_by_module),
     )

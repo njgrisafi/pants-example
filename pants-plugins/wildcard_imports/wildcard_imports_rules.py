@@ -81,15 +81,15 @@ async def get_file_import_recommendations(
     py_file_import_recommendations_req: PythonFileWildcardImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
     get_commands: List[Get] = []
-    for python_import in py_file_import_recommendations_req.py_file_info.imports:
-        if python_import.is_wildcard_import:
+    for py_import in py_file_import_recommendations_req.py_file_info.imports:
+        if py_import.is_wildcard_import:
             get_commands.append(
                 Get(
                     PythonImportRecommendation,
                     WildcardImportRecommendationsRequest,
                     WildcardImportRecommendationsRequest(
                         source_py_file_info=py_file_import_recommendations_req.py_file_info,
-                        wildcard_import=python_import,
+                        wildcard_import=py_import,
                         py_package_helper=py_file_import_recommendations_req.py_package_helper,
                     ),
                 )
@@ -109,7 +109,7 @@ async def get_wildcard_import_recommendation(
         py_package_helper=wildcard_import_rec_req.py_package_helper
     ).get_wildcard_import_recommendation(
         source_py_file_info=wildcard_import_rec_req.source_py_file_info,
-        python_wildcard_import=wildcard_import_rec_req.wildcard_import,
+        py_wildcard_import=wildcard_import_rec_req.wildcard_import,
     )
     return PythonImportRecommendation(source_import=wildcard_import_rec_req.wildcard_import, recommendations=recs)
 
@@ -131,25 +131,25 @@ async def get_file_duplicate_import_recommendations(
     py_file_dup_import_rec_req: PythonFileDuplicateImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
     imports_by_names: Dict[str, List[PythonImport]] = defaultdict(list)
-    for python_import in py_file_dup_import_rec_req.py_file_info.imports:
-        for name in python_import.names:
-            imports_by_names[name].append(python_import)
+    for py_import in py_file_dup_import_rec_req.py_file_info.imports:
+        for name in py_import.names:
+            imports_by_names[name].append(py_import)
 
     # Get all duplciate import names
     duplicate_import_by_names: Dict[str, List[PythonImport]] = defaultdict(list)
-    for name, python_imports in imports_by_names.items():
-        if len(python_imports) > 1:
-            duplicate_import_by_names[name] = python_imports
+    for name, py_imports in imports_by_names.items():
+        if len(py_imports) > 1:
+            duplicate_import_by_names[name] = py_imports
 
     get_commands: List[Get] = []
-    for name, python_imports in duplicate_import_by_names.items():
+    for name, py_imports in duplicate_import_by_names.items():
         get_commands.append(
             Get(
                 PythonFileImportRecommendations,
                 DuplicateImportRecommendationsRequest,
                 DuplicateImportRecommendationsRequest(
                     py_file_info=py_file_dup_import_rec_req.py_file_info,
-                    duplicate_imports=tuple(python_imports),
+                    duplicate_imports=tuple(py_imports),
                     duplicate_name=name,
                     py_package_helper=py_file_dup_import_rec_req.py_package_helper,
                 ),
