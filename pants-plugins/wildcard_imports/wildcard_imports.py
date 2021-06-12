@@ -12,6 +12,7 @@ from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
 from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
 from pants.util.filtering import and_filters, create_filters
 from wildcard_imports.autoflake_rules import AutoflakeRequest
+from wildcard_imports.autoimport_rules import AutoImportRequest
 from wildcard_imports.import_fixer import utils
 from wildcard_imports.import_fixer.python_file_import_recs import PythonFileImportRecommendations
 from wildcard_imports.import_fixer.python_package_helper import for_python_files
@@ -144,6 +145,31 @@ async def wildcard_imports(
     )
     workspace.write_digest(res.output)
 
+    # TODO: this is a hack because writting and reloading digest right away is not reliable.
+    time.sleep(1)
+
+    digest = await Get(Digest, PathGlobs(wildcard_import_sources))
+    res: FmtResult = await Get(
+        FmtResult,
+        IsortRequest,
+        IsortRequest(
+            argv=("--force-single-line-imports", "--line-length=100000000", "--float-to-top"),
+            digest=digest,
+        ),
+    )
+    workspace.write_digest(res.output)
+
+    # TODO: this is a hack because writting and reloading digest right away is not reliable.
+    time.sleep(1)
+
+    digest = await Get(Digest, PathGlobs(wildcard_import_sources))
+    res: FmtResult = await Get(
+        FmtResult,
+        AutoImportRequest,
+        AutoImportRequest(digest=digest),
+    )
+    workspace.write_digest(res.output)
+
     ##########################
     # Fix Wildcard Imports
     ##########################
@@ -203,7 +229,7 @@ async def wildcard_imports(
     )
     digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in all_import_recs]))
 
-    # Run auto flake on changed files
+    # Run autoflake and autoimport on changed files
     res: FmtResult = await Get(
         FmtResult,
         AutoflakeRequest,
