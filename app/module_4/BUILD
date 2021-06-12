@@ -1,3 +1,3 @@
 python_library(
-    wildcard_imports=True
+    skip_wildcard_imports=False
 )

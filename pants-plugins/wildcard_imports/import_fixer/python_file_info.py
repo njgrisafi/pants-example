@@ -120,7 +120,7 @@ def get_imports_from_ast_node(node: ast.Module) -> Iterator[PythonImport]:
             module = []
         elif isinstance(node, ast.ImportFrom):
             level = node.level
-            module = node.module.split(".") if node.module else node.module
+            module = node.module.split(".") if node.module else []
         else:
             continue
         for n in node.names:

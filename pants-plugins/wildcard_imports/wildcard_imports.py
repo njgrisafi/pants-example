@@ -13,14 +13,14 @@ from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets,
 from pants.util.filtering import and_filters, create_filters
 from wildcard_imports.autoflake_rules import AutoflakeRequest
 from wildcard_imports.import_fixer import utils
-from wildcard_imports.import_fixer.import_fixer_handler import PythonFileImportRecommendations
+from wildcard_imports.import_fixer.python_file_import_recs import PythonFileImportRecommendations
 from wildcard_imports.import_fixer.python_package_helper import for_python_files
 from wildcard_imports.isort_rules import IsortRequest
 from wildcard_imports.wildcard_imports_rules import (
     PythonFileDuplicateImportRecommendationsRequest,
     PythonFileMissingImportRecommendationsRequest,
+    PythonFileTransitiveImportRecommendationsRequest,
     PythonFileWildcardImportRecommendationsRequest,
-    PythonTransitiveFileImportRecommendationsRequest,
 )
 from wildcard_imports.wildcard_imports_skip_field import WildcardImportsSkipField
 
@@ -185,8 +185,8 @@ async def wildcard_imports(
             list(
                 Get(
                     PythonFileImportRecommendations,
-                    PythonTransitiveFileImportRecommendationsRequest,
-                    PythonTransitiveFileImportRecommendationsRequest(
+                    PythonFileTransitiveImportRecommendationsRequest,
+                    PythonFileTransitiveImportRecommendationsRequest(
                         transitive_py_file_info=transitive_py_file_info,
                         py_file_import_reccomendations=import_rec,
                         py_package_helper=py_package_helper,

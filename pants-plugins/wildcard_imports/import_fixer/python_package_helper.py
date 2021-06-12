@@ -5,7 +5,11 @@ from typing import Dict, List, Tuple
 from pants.engine.fs import DigestContents
 from pants.util.frozendict import FrozenDict
 from wildcard_imports.import_fixer import utils
-from wildcard_imports.import_fixer.python_file_info import PythonFileInfo, PythonImport, from_python_file_path
+from wildcard_imports.import_fixer.python_file_info import (
+    PythonFileInfo,
+    PythonImport,
+    from_python_file_path,
+)
 
 
 @dataclass(frozen=True)
@@ -78,9 +82,7 @@ class PythonPackageHelper:
                 )
         return tuple(py_imports_used)
 
-    def get_python_file_defined_names_from_import(
-        self, py_import: PythonImport, py_file: PythonFileInfo
-    ) -> List[str]:
+    def get_python_file_defined_names_from_import(self, py_import: PythonImport, py_file: PythonFileInfo) -> List[str]:
         defined_names = []
         for name in py_import.names:
             if py_file.has_name(name):
