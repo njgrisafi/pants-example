@@ -1,6 +1,8 @@
+import logging
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+from custom_flake8.skip_field import SkipFlake8Field
 from pants.backend.python.lint.flake8.subsystem import Flake8
 from pants.backend.python.target_types import InterpreterConstraintsField, PythonSources
 from pants.backend.python.util_rules import pex
@@ -22,10 +24,6 @@ from pants.engine.unions import UnionRule
 from pants.python.python_setup import PythonSetup
 from pants.util.logging import LogLevel
 from pants.util.strutil import pluralize
-
-import logging
-
-from custom_flake8.skip_field import SkipFlake8Field
 
 logger = logging.getLogger(__name__)
 

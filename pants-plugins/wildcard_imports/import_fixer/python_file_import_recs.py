@@ -38,4 +38,3 @@ class PythonFileImportRecommendations:
                 import_content_to_insert = "\n".join([py_import.import_str for py_import in import_rec.recommendations])
                 content = content[:insert_line] + f"\n{import_content_to_insert}\n" + content[insert_line:]
         return FileContent(path=self.py_file_info.path, content=content.encode())
-

@@ -50,6 +50,41 @@ class PythonFileTransitiveImportRecommendationsRequest:
 
 
 @dataclass(frozen=True)
+class PythonFileTransitiveNamesRequest:
+    py_file_info: PythonFileInfo
+    transitive_py_file_info: PythonFileInfo
+    py_package_helper: PythonPackageHelper
+
+
+@dataclass(frozen=True)
+class PythonFileTransitiveNamesResponse:
+    names: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PythonFileTransitiveImportsRequest:
+    py_file_info: PythonFileInfo
+    transitive_py_file_info: PythonFileInfo
+    py_package_helper: PythonPackageHelper
+
+
+@dataclass(frozen=True)
+class PythonFileTransitiveImportsResponse:
+    py_imports: Tuple[PythonImport, ...]
+
+
+@dataclass(frozen=True)
+class PythonFileImportDefinedNamesRequest:
+    py_file_info: PythonFileInfo
+    py_import: PythonImport
+
+
+@dataclass(frozen=True)
+class PythonFileImportDefinedNamesResponse:
+    defined_names: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class TransitiveImportRecommendationsRequest:
     py_file_info: PythonFileInfo
     transitive_py_file_info: PythonFileInfo

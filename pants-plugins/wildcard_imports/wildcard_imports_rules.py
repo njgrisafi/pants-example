@@ -12,10 +12,16 @@ from wildcard_imports.rules_param_types import (
     DuplicateImportRecommendationsRequest,
     MissingImportRecommendationRequest,
     PythonFileDuplicateImportRecommendationsRequest,
+    PythonFileImportDefinedNamesRequest,
+    PythonFileImportDefinedNamesResponse,
     PythonFileMissingImportRecommendationsRequest,
     PythonFileSubmoduleImportRecommendationsRequest,
     PythonFileSubmoduleImportRecommendationsResponse,
     PythonFileTransitiveImportRecommendationsRequest,
+    PythonFileTransitiveImportsRequest,
+    PythonFileTransitiveImportsResponse,
+    PythonFileTransitiveNamesRequest,
+    PythonFileTransitiveNamesResponse,
     PythonFileWildcardImportRecommendationsRequest,
     SubmoduleTansitiveWildcardImportsRequest,
     SubmoduleTransitiveWildcardImportsResponse,
@@ -107,15 +113,20 @@ async def get_wildcard_import_recommendation(
 
 
 @rule(desc="Gets import recommendations for transitive file usages.")
-def get_transitive_file_import_recommendations(
+async def get_transitive_file_import_recommendations(
     transitive_import_recs_request: TransitiveImportRecommendationsRequest,
 ) -> TransitiveImportRecommendationsResponse:
     import_recommendations = []
     # Check usage of direct transitive python file names
-    names = transitive_import_recs_request.py_package_helper.get_names_used_from_transitive_python_file(
-        source_py_file=transitive_import_recs_request.py_file_info,
-        transitive_py_file=transitive_import_recs_request.transitive_py_file_info,
+    res: PythonFileTransitiveNamesResponse = await Get(
+        PythonFileTransitiveNamesResponse,
+        PythonFileTransitiveNamesRequest(
+            py_file_info=transitive_import_recs_request.py_file_info,
+            transitive_py_file_info=transitive_import_recs_request.transitive_py_file_info,
+            py_package_helper=transitive_import_recs_request.py_package_helper,
+        ),
     )
+    names = res.names
     if names:
         import_recommendations.append(
             PythonImport(
@@ -127,13 +138,15 @@ def get_transitive_file_import_recommendations(
         )
 
     # Get usage of imports names from transitive python file
-    import_recommendations.extend(
-        transitive_import_recs_request.py_package_helper.get_imports_used_from_transitive_python_file(
-            source_py_file=transitive_import_recs_request.py_file_info,
-            transitive_py_file=transitive_import_recs_request.transitive_py_file_info,
-        )
+    res: PythonFileTransitiveImportsResponse = await Get(
+        PythonFileTransitiveImportsResponse,
+        PythonFileTransitiveImportsRequest(
+            py_file_info=transitive_import_recs_request.py_file_info,
+            transitive_py_file_info=transitive_import_recs_request.transitive_py_file_info,
+            py_package_helper=transitive_import_recs_request.py_package_helper,
+        ),
     )
-    return TransitiveImportRecommendationsResponse(transitive_imports=tuple(import_recommendations))
+    return TransitiveImportRecommendationsResponse(transitive_imports=res.py_imports)
 
 
 @rule("Gets a Python file submodule imports used.")
@@ -323,6 +336,83 @@ async def get_missing_import_recommendation(
                 ),
             )
     return PythonImportRecommendation(source_import=None, recommendations=())
+
+
+@rule(desc="Get names used from transitive Python file")
+async def get_names_used_from_transitive_python_file(
+    py_file_transitive_names_req: PythonFileTransitiveNamesRequest,
+) -> PythonFileTransitiveNamesResponse:
+    names = []
+    source_py_file = py_file_transitive_names_req.py_file_info
+    transitive_py_file = py_file_transitive_names_req.transitive_py_file_info
+    py_package_helper = py_file_transitive_names_req.py_package_helper
+    file_content = source_py_file.file_content_str
+    for py_class in transitive_py_file.classes:
+        if utils.has_symbol_usage(symbol=py_class.name, file_content=file_content):
+            names.append(py_class.name)
+    for py_function in transitive_py_file.functions:
+        if utils.has_symbol_usage(symbol=py_function.name, file_content=file_content):
+            names.append(py_function.name)
+    for py_constant in transitive_py_file.constants:
+        for src_constant in source_py_file.constants:
+            if py_constant.name == src_constant.name:
+                break
+        else:
+            if utils.has_symbol_usage(symbol=py_constant.name, file_content=file_content):
+                names.append(py_constant.name)
+
+    if transitive_py_file.module_key in py_package_helper.ignored_import_names_by_module:
+        names_to_skip = py_package_helper.ignored_import_names_by_module[transitive_py_file.module_key]
+        names = set(names) - set(names_to_skip)
+    return PythonFileTransitiveNamesResponse(names=tuple(names))
+
+
+@rule("Gets imports used from transitive Python file")
+async def get_imports_used_from_transitive_python_file(
+    py_file_tansitive_imports_rec: PythonFileTransitiveImportsRequest,
+) -> PythonFileTransitiveImportsResponse:
+    py_imports_used = []
+    transitive_py_file = py_file_tansitive_imports_rec.transitive_py_file_info
+    source_py_file = py_file_tansitive_imports_rec.py_file_info
+    py_package_helper = py_file_tansitive_imports_rec.py_package_helper
+    for py_import in transitive_py_file.imports:
+        defined_names = py_import.names
+        if py_import.modules_str in py_package_helper.py_file_info_by_module:
+            res: PythonFileImportDefinedNamesResponse = await Get(
+                PythonFileImportDefinedNamesResponse,
+                PythonFileImportDefinedNamesRequest(
+                    py_file_info=py_package_helper.py_file_info_by_module[py_import.modules_str], py_import=py_import
+                ),
+            )
+            defined_names = res.defined_names
+        names_used = []
+        for name in defined_names:
+            if utils.has_symbol_usage(symbol=name, file_content=source_py_file.file_content_str):
+                names_used.append(name)
+        if py_import.modules_str in py_package_helper.ignored_import_names_by_module:
+            names_to_skip = py_package_helper.ignored_import_names_by_module[py_import.modules_str]
+            names_used = set(names_used) - set(names_to_skip)
+        if names_used:
+            py_imports_used.append(
+                PythonImport(
+                    modules=py_import.modules,
+                    level=py_import.level,
+                    names=tuple(names_used),
+                    aliases=(),
+                )
+            )
+    return PythonFileTransitiveImportsResponse(py_imports=tuple(py_imports_used))
+
+
+@rule("Gets Python file defined names from an import.")
+async def get_python_file_defined_names_from_import(
+    py_file_import_defined_names_rec: PythonFileImportDefinedNamesRequest,
+) -> PythonFileImportDefinedNamesResponse:
+    defined_names = []
+    for name in py_file_import_defined_names_rec.py_import.names:
+        if py_file_import_defined_names_rec.py_file_info.has_name(name):
+            defined_names.append(name)
+    return PythonFileImportDefinedNamesResponse(defined_names=defined_names)
 
 
 def rules() -> Iterable[Rule]:

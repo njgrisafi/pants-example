@@ -1,6 +1,8 @@
+import logging
 from dataclasses import dataclass
 from typing import Tuple
 
+from custom_black.skip_field import SkipBlackField
 from pants.backend.python.lint.black.subsystem import Black
 from pants.backend.python.lint.python_fmt import PythonFmtRequest
 from pants.backend.python.target_types import InterpreterConstraintsField, PythonSources
@@ -24,10 +26,6 @@ from pants.engine.unions import UnionRule
 from pants.python.python_setup import PythonSetup
 from pants.util.logging import LogLevel
 from pants.util.strutil import pluralize
-
-import logging
-
-from custom_black.skip_field import SkipBlackField
 
 logger = logging.getLogger(__name__)
 
