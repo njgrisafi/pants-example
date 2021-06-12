@@ -15,6 +15,7 @@ from wildcard_imports.autoflake_rules import AutoflakeRequest
 from wildcard_imports.autoimport_rules import AutoImportRequest
 from wildcard_imports.import_fixer import utils
 from wildcard_imports.import_fixer.python_file_import_recs import PythonFileImportRecommendations
+from wildcard_imports.import_fixer.python_file_info import PythonFileInfo
 from wildcard_imports.import_fixer.python_package_helper import for_python_files
 from wildcard_imports.isort_rules import IsortRequest
 from wildcard_imports.wildcard_imports_rules import (
@@ -205,8 +206,16 @@ async def wildcard_imports(
     )
 
     # Get transitive file recommendations for changed files
+    all_transitive_py_file_info: List[PythonFileInfo] = []
     get_commands: List[Get] = []
     for import_rec in wildcard_import_recs:
+        transitive_files = [
+            transitive_py_file_info
+            for transitive_py_file_info in py_package_helper.get_transtive_python_files_by_wildcard_import(
+                source_py_file_info=import_rec.py_file_info
+            )
+            if transitive_py_file_info.path not in wildcard_import_sources
+        ]
         get_commands.extend(
             list(
                 Get(
@@ -218,12 +227,11 @@ async def wildcard_imports(
                         py_package_helper=py_package_helper,
                     ),
                 )
-                for transitive_py_file_info in py_package_helper.get_transtive_python_files_by_wildcard_import(
-                    source_py_file_info=import_rec.py_file_info
-                )
+                for transitive_py_file_info in transitive_files
                 if transitive_py_file_info.path not in wildcard_import_sources
             )
         )
+        all_transitive_py_file_info.extend(transitive_files)
     transitive_import_recs: Tuple[PythonFileImportRecommendations, ...] = ()
     if get_commands:
         transitive_import_recs = await MultiGet(get_commands)
@@ -305,7 +313,11 @@ async def wildcard_imports(
         ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
     )
     missing_import_files: List[FileContent] = []
-    digest = await Get(Digest, PathGlobs([import_rec.py_file_info.path for import_rec in all_import_recs]))
+    paths_to_update = set(
+        [import_rec.py_file_info.path for import_rec in all_import_recs]
+        + [py_file_info.path for py_file_info in all_transitive_py_file_info]  # noqa: W503
+    )
+    digest = await Get(Digest, PathGlobs(paths_to_update))
     digest_contents: DigestContents = await Get(DigestContents, Digest, digest)
     for file_content in digest_contents:
         if utils.has_missing_import(file_content=file_content.content):
