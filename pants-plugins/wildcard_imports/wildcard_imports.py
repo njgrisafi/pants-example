@@ -221,9 +221,13 @@ async def wildcard_imports(
                 for transitive_py_file_info in py_package_helper.get_transtive_python_files_by_wildcard_import(
                     source_py_file_info=import_rec.py_file_info
                 )
+                if transitive_py_file_info.path not in wildcard_import_sources
             )
         )
-    transitive_import_recs: Tuple[PythonFileImportRecommendations, ...] = await MultiGet(get_commands)
+    transitive_import_recs: Tuple[PythonFileImportRecommendations, ...] = ()
+    if get_commands:
+        transitive_import_recs = await MultiGet(get_commands)
+
     all_import_recs: List[PythonFileImportRecommendations] = list(
         set(list(wildcard_import_recs) + list(transitive_import_recs))
     )
