@@ -200,7 +200,10 @@ async def wildcard_imports(
         Get(
             PythonFileImportRecommendations,
             PythonFileWildcardImportRecommendationsRequest,
-            PythonFileWildcardImportRecommendationsRequest(file_path=fp, py_package_helper=py_package_helper),
+            PythonFileWildcardImportRecommendationsRequest(
+                py_file_info=py_package_helper.get_python_file_info_from_file_path(fp),
+                py_package_helper=py_package_helper,
+            ),
         )
         for fp in wildcard_import_sources
     )
@@ -211,7 +214,7 @@ async def wildcard_imports(
     for import_rec in wildcard_import_recs:
         transitive_files = [
             transitive_py_file_info
-            for transitive_py_file_info in py_package_helper.get_transtive_python_files_by_wildcard_import(
+            for transitive_py_file_info in py_package_helper.get_transitive_python_files(
                 source_py_file_info=import_rec.py_file_info
             )
             if transitive_py_file_info.path not in wildcard_import_sources
@@ -222,8 +225,8 @@ async def wildcard_imports(
                     PythonFileImportRecommendations,
                     PythonFileTransitiveImportRecommendationsRequest,
                     PythonFileTransitiveImportRecommendationsRequest(
+                        py_file_info=import_rec.py_file_info,
                         transitive_py_file_info=transitive_py_file_info,
-                        py_file_import_reccomendations=import_rec,
                         py_package_helper=py_package_helper,
                     ),
                 )
@@ -284,7 +287,7 @@ async def wildcard_imports(
             PythonFileImportRecommendations,
             PythonFileDuplicateImportRecommendationsRequest,
             PythonFileDuplicateImportRecommendationsRequest(
-                file_path=import_rec.py_file_info.path, py_package_helper=py_package_helper
+                py_file_info=import_rec.py_file_info, py_package_helper=py_package_helper
             ),
         )
         for import_rec in all_import_recs
@@ -326,7 +329,10 @@ async def wildcard_imports(
         Get(
             PythonFileImportRecommendations,
             PythonFileMissingImportRecommendationsRequest,
-            PythonFileMissingImportRecommendationsRequest(file_path=fc.path, py_package_helper=py_package_helper),
+            PythonFileMissingImportRecommendationsRequest(
+                py_file_info=py_package_helper.get_python_file_info_from_file_path(fc.path),
+                py_package_helper=py_package_helper,
+            ),
         )
         for fc in missing_import_files
     )

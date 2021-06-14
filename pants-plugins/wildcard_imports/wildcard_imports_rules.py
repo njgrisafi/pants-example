@@ -1,13 +1,16 @@
 from collections import defaultdict
 from typing import Dict, Iterable, List, Tuple
 
+from pants.core.goals.fmt import FmtResult
+from pants.engine.fs import CreateDigest, Digest, DigestContents
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, rule
 from wildcard_imports.import_fixer import utils
 from wildcard_imports.import_fixer.python_file_import_recs import (
     PythonFileImportRecommendations,
     PythonImportRecommendation,
 )
-from wildcard_imports.import_fixer.python_file_info import PythonImport
+from wildcard_imports.import_fixer.python_file_info import PythonImport, from_python_file_path
+from wildcard_imports.isort_rules import IsortRequest
 from wildcard_imports.rules_param_types import (
     DuplicateImportRecommendationsRequest,
     MissingImportRecommendationRequest,
@@ -66,6 +69,8 @@ async def get_wildcard_import_recommendation(
     visited = []
     import_recommendations: List[PythonImport] = []
     stack = [py_wildcard_import]
+    print("=================================================")
+    print(source_py_file_info)
     while stack:
         py_import = stack.pop()
         if py_import.modules_str in visited:
@@ -73,6 +78,7 @@ async def get_wildcard_import_recommendation(
         visited.append(py_import.modules_str)
         try:
             transitive_py_file_info = py_package_helper.py_file_info_by_module[py_import.modules_str]
+            print(transitive_py_file_info)
             res: TransitiveImportRecommendationsResponse = await Get(
                 TransitiveImportRecommendationsResponse,
                 TransitiveImportRecommendationsRequest(
@@ -81,6 +87,7 @@ async def get_wildcard_import_recommendation(
                     py_package_helper=py_package_helper,
                 ),
             )
+            print(res.transitive_imports)
             import_recommendations.extend(res.transitive_imports)
 
             if transitive_py_file_info.is_module:
@@ -146,7 +153,8 @@ async def get_transitive_file_import_recommendations(
             py_package_helper=transitive_import_recs_request.py_package_helper,
         ),
     )
-    return TransitiveImportRecommendationsResponse(transitive_imports=res.py_imports)
+    import_recommendations.extend(res.py_imports)
+    return TransitiveImportRecommendationsResponse(transitive_imports=import_recommendations)
 
 
 @rule("Gets a Python file submodule imports used.")
@@ -197,18 +205,31 @@ async def get_python_file_transitive_import_recommendations(
         names=("*",),
         aliases=(),
     )
-    recs = await Get(
-        PythonImportRecommendation,
-        WildcardImportRecommendationsRequest(
-            source_py_file_info=py_transitive_file_import_rec_req.transitive_py_file_info,
-            wildcard_import=wildcard_py_import,
+    rec = PythonFileImportRecommendations(
+        py_file_info=py_transitive_file_import_rec_req.transitive_py_file_info,
+        import_recommendations=(PythonImportRecommendation(source_import=(), recommendations=(wildcard_py_import,)),),
+    )
+    digest = await Get(Digest, CreateDigest([rec.fixed_file_content]))
+    res: FmtResult = await Get(
+        FmtResult,
+        IsortRequest,
+        IsortRequest(argv=("--line-length=100000000", "--force-single-line-imports", "--combine-star"), digest=digest),
+    )
+    digest_contents: DigestContents = await Get(DigestContents, Digest, res.output)
+    update_transitive_py_file_info = from_python_file_path(
+        file_path=py_transitive_file_import_rec_req.transitive_py_file_info.path,
+        file_content=digest_contents[0].content,
+        module_key=py_transitive_file_import_rec_req.transitive_py_file_info.module_key
+    )
+    recs: PythonFileImportRecommendations = await Get(
+        PythonFileImportRecommendations,
+        PythonFileWildcardImportRecommendationsRequest(
+            py_file_info=update_transitive_py_file_info,
             py_package_helper=py_transitive_file_import_rec_req.py_package_helper,
         ),
     )
-    return PythonFileImportRecommendations(
-        py_file_info=py_transitive_file_import_rec_req.transitive_py_file_info,
-        import_recommendations=(recs,),
-    )
+    print(recs)
+    return recs
 
 
 @rule(desc="Gets duplicate import recommendations for a python file")

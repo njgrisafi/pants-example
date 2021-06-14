@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 from pants.engine.fs import DigestContents
 from pants.util.frozendict import FrozenDict
@@ -12,7 +12,8 @@ from wildcard_imports.import_fixer.python_file_info import PythonFileInfo, Pytho
 class PythonPackageHelper:
     include_top_level_package: bool
     py_file_info_by_module: FrozenDict[str, PythonFileInfo]
-    py_file_info_by_import_star: FrozenDict[str, Tuple[PythonFileInfo, ...]]
+    # py_file_info_by_import_star: FrozenDict[str, Tuple[PythonFileInfo, ...]]
+    py_file_info_by_import_module_str: FrozenDict[str, Tuple[PythonFileInfo, ...]]
     ignored_import_names_by_module: FrozenDict[str, Tuple[str, ...]]
 
     def get_python_file_info_from_file_path(self, file_path: str) -> PythonFileInfo:
@@ -21,10 +22,9 @@ class PythonPackageHelper:
         )
         return self.py_file_info_by_module[module_key]
 
-    def get_transtive_python_files_by_wildcard_import(
-        self, source_py_file_info: PythonFileInfo
-    ) -> Tuple[PythonFileInfo, ...]:
-        return self.py_file_info_by_import_star.get(f"from {source_py_file_info.module_key} import *", [])
+    def get_transitive_python_files(self, source_py_file_info: PythonFileInfo) -> Tuple[PythonFileInfo, ...]:
+        # return self.py_file_info_by_import_star.get(f"from {source_py_file_info.module_key} import *", [])
+        return self.py_file_info_by_import_module_str.get(source_py_file_info.module_key, ())
 
 
 def unwind_relative_imports(py_file_info_by_module: Dict[str, PythonFileInfo]) -> Dict[str, PythonFileInfo]:
@@ -71,16 +71,18 @@ def for_python_files(
     file_info_by_module = unwind_relative_imports(py_file_info_by_module=file_info_by_module)
 
     # Generate py_file_info_by_import_star mapping
-    file_info_by_import_star: Dict[str, Tuple[PythonFileInfo, ...]] = defaultdict(tuple)
+    # file_info_by_import_star: Dict[str, Tuple[PythonFileInfo, ...]] = defaultdict(tuple)
+    file_info_by_import_module_str: Dict[str, Tuple[PythonFileInfo, ...]] = defaultdict(tuple)
     for py_file_info in file_info_by_module.values():
         for py_import in py_file_info.imports:
-            if py_import.is_wildcard_import:
-                vals = list(file_info_by_import_star[py_import.import_str])
-                vals.append(py_file_info)
-                file_info_by_import_star[py_import.import_str] = tuple(vals)
+            # if py_import.is_wildcard_import:
+            file_info_by_import_module_str[py_import.modules_str] = tuple(
+                list(file_info_by_import_module_str[py_import.modules_str]) + [py_file_info]
+            )
     return PythonPackageHelper(
         include_top_level_package=include_top_level_package,
         py_file_info_by_module=FrozenDict(file_info_by_module),
-        py_file_info_by_import_star=FrozenDict(file_info_by_import_star),
+        # py_file_info_by_import_star=FrozenDict(file_info_by_import_star),
+        py_file_info_by_import_module_str=FrozenDict(file_info_by_import_module_str),
         ignored_import_names_by_module=FrozenDict(ignored_import_names_by_module),
     )
