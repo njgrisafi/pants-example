@@ -1,9 +1,10 @@
 [GLOBAL]
-pants_version = "2.3.0rc2"
+pants_version = "2.5.0"
 backend_packages = [
   "pants.backend.python",
-  "pants.backend.python.mixed_interpreter_constraints"
+  "pants.backend.python.lint.isort"
 ]
 
-[python-setup]
-interpreter_constraints = ["CPython==2.7.*"]
+
+[isort]
+config = "pyproject.toml"
