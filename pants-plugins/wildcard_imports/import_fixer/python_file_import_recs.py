@@ -26,9 +26,8 @@ class PythonFileImportRecommendations:
             if import_rec.source_import:
                 regex_str = import_rec.source_import.import_str.replace("*", "\*")  # noqa: W605
                 if len(import_rec.recommendations) == 0:
-                    content = re.sub(f"{regex_str}\n", "", content)
+                    content = re.sub(rf"(.*){regex_str}\n", "", content)
                 else:
-                    # print(import_rec.recommendations)
                     replacement_import_strs = set([py_import.import_str for py_import in import_rec.recommendations])
                     content = re.sub(regex_str, "\n".join(replacement_import_strs), content)
             # Add new import recs

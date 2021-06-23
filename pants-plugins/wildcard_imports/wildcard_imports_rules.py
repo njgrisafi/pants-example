@@ -2,14 +2,17 @@ from collections import defaultdict
 from typing import Dict, Iterable, List, Tuple
 
 from pants.core.goals.fmt import FmtResult
-from pants.engine.fs import CreateDigest, Digest, DigestContents
+from pants.engine.fs import Digest, DigestContents, PathGlobs
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, rule
 from wildcard_imports.import_fixer import utils
 from wildcard_imports.import_fixer.python_file_import_recs import (
     PythonFileImportRecommendations,
     PythonImportRecommendation,
 )
-from wildcard_imports.import_fixer.python_file_info import PythonImport, from_python_file_path
+from wildcard_imports.import_fixer.python_file_info import (
+    PythonImport,
+    from_python_file_path,
+)
 from wildcard_imports.isort_rules import IsortRequest
 from wildcard_imports.rules_param_types import (
     DuplicateImportRecommendationsRequest,
@@ -69,8 +72,6 @@ async def get_wildcard_import_recommendation(
     visited = []
     import_recommendations: List[PythonImport] = []
     stack = [py_wildcard_import]
-    print("=================================================")
-    print(source_py_file_info)
     while stack:
         py_import = stack.pop()
         if py_import.modules_str in visited:
@@ -78,7 +79,6 @@ async def get_wildcard_import_recommendation(
         visited.append(py_import.modules_str)
         try:
             transitive_py_file_info = py_package_helper.py_file_info_by_module[py_import.modules_str]
-            print(transitive_py_file_info)
             res: TransitiveImportRecommendationsResponse = await Get(
                 TransitiveImportRecommendationsResponse,
                 TransitiveImportRecommendationsRequest(
@@ -87,7 +87,6 @@ async def get_wildcard_import_recommendation(
                     py_package_helper=py_package_helper,
                 ),
             )
-            print(res.transitive_imports)
             import_recommendations.extend(res.transitive_imports)
 
             if transitive_py_file_info.is_module:
@@ -109,7 +108,13 @@ async def get_wildcard_import_recommendation(
                     module_py_import=py_import, py_package_helper=py_package_helper
                 ),
             )
-            stack.extend(res.submodule_transitive_py_imports)
+            stack.extend(
+                [
+                    py_import
+                    for py_import in res.submodule_transitive_py_imports
+                    if py_import.modules_str != source_py_file_info.module_key
+                ]
+            )
             continue
 
         # iterate on transitive 'import *' to find nested symbol usages
@@ -154,7 +159,7 @@ async def get_transitive_file_import_recommendations(
         ),
     )
     import_recommendations.extend(res.py_imports)
-    return TransitiveImportRecommendationsResponse(transitive_imports=import_recommendations)
+    return TransitiveImportRecommendationsResponse(transitive_imports=tuple(import_recommendations))
 
 
 @rule("Gets a Python file submodule imports used.")
@@ -199,37 +204,59 @@ async def get_python_file_transitive_import_recommendations(
     py_transitive_file_import_rec_req: PythonFileTransitiveImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
     # Update python files that import the current python file via a wildcard import
-    wildcard_py_import = PythonImport(
-        modules=tuple(py_transitive_file_import_rec_req.py_file_info.module_key.split(".")),
-        level=0,
-        names=("*",),
-        aliases=(),
-    )
-    rec = PythonFileImportRecommendations(
-        py_file_info=py_transitive_file_import_rec_req.transitive_py_file_info,
-        import_recommendations=(PythonImportRecommendation(source_import=(), recommendations=(wildcard_py_import,)),),
-    )
-    digest = await Get(Digest, CreateDigest([rec.fixed_file_content]))
+    digest = await Get(Digest, PathGlobs([py_transitive_file_import_rec_req.transitive_py_file_info.path]))
     res: FmtResult = await Get(
         FmtResult,
         IsortRequest,
-        IsortRequest(argv=("--line-length=100000000", "--force-single-line-imports", "--combine-star"), digest=digest),
+        IsortRequest(argv=("--line-length=100000000"), digest=digest),
     )
     digest_contents: DigestContents = await Get(DigestContents, Digest, res.output)
     update_transitive_py_file_info = from_python_file_path(
         file_path=py_transitive_file_import_rec_req.transitive_py_file_info.path,
         file_content=digest_contents[0].content,
-        module_key=py_transitive_file_import_rec_req.transitive_py_file_info.module_key
+        module_key=py_transitive_file_import_rec_req.transitive_py_file_info.module_key,
     )
-    recs: PythonFileImportRecommendations = await Get(
-        PythonFileImportRecommendations,
-        PythonFileWildcardImportRecommendationsRequest(
-            py_file_info=update_transitive_py_file_info,
-            py_package_helper=py_transitive_file_import_rec_req.py_package_helper,
+    if py_transitive_file_import_rec_req.py_import.is_wildcard_import:
+        recs: PythonFileImportRecommendations = await Get(
+            PythonFileImportRecommendations,
+            PythonFileWildcardImportRecommendationsRequest(
+                py_file_info=update_transitive_py_file_info,
+                py_package_helper=py_transitive_file_import_rec_req.py_package_helper,
+            ),
+        )
+        return recs
+    defined_names_res: PythonFileImportDefinedNamesResponse = await Get(
+        PythonFileImportDefinedNamesResponse,
+        PythonFileImportDefinedNamesRequest(
+            py_file_info=py_transitive_file_import_rec_req.py_file_info,
+            py_import=py_transitive_file_import_rec_req.py_import,
         ),
     )
-    print(recs)
-    return recs
+    if len(defined_names_res.defined_names) == 0:
+        return PythonFileImportRecommendations(
+            py_file_info=py_transitive_file_import_rec_req.transitive_py_file_info,
+            import_recommendations=(
+                PythonImportRecommendation(
+                    source_import=py_transitive_file_import_rec_req.py_import, recommendations=()
+                ),
+            ),
+        )
+    return PythonFileImportRecommendations(
+        py_file_info=py_transitive_file_import_rec_req.transitive_py_file_info,
+        import_recommendations=(
+            PythonImportRecommendation(
+                source_import=py_transitive_file_import_rec_req.py_import,
+                recommendations=(
+                    PythonImport(
+                        modules=tuple(py_transitive_file_import_rec_req.py_file_info.module_key.split(".")),
+                        level=0,
+                        names=defined_names_res.defined_names,
+                        aliases=(),
+                    ),
+                ),
+            ),
+        ),
+    )
 
 
 @rule(desc="Gets duplicate import recommendations for a python file")
@@ -369,23 +396,33 @@ async def get_names_used_from_transitive_python_file(
     py_package_helper = py_file_transitive_names_req.py_package_helper
     file_content = source_py_file.file_content_str
     for py_class in transitive_py_file.classes:
-        if utils.has_symbol_usage(symbol=py_class.name, file_content=file_content):
-            names.append(py_class.name)
+        names.append(py_class.name)
     for py_function in transitive_py_file.functions:
-        if utils.has_symbol_usage(symbol=py_function.name, file_content=file_content):
-            names.append(py_function.name)
+        names.append(py_function.name)
     for py_constant in transitive_py_file.constants:
         for src_constant in source_py_file.constants:
             if py_constant.name == src_constant.name:
-                break
-        else:
-            if utils.has_symbol_usage(symbol=py_constant.name, file_content=file_content):
                 names.append(py_constant.name)
 
-    if transitive_py_file.module_key in py_package_helper.ignored_import_names_by_module:
-        names_to_skip = py_package_helper.ignored_import_names_by_module[transitive_py_file.module_key]
-        names = set(names) - set(names_to_skip)
-    return PythonFileTransitiveNamesResponse(names=tuple(names))
+    names_to_skip = set(
+        list(py_package_helper.ignored_import_names_by_module.get(transitive_py_file.module_key, ()))
+        + list(py_package_helper.ignored_import_names_by_module.get("*", ()))
+    )
+    filtered_names = []
+    for name in names:
+        for src_imports in source_py_file.imports:
+            if name in src_imports.names:
+                break
+        else:
+            filtered_names.append(name)
+    filtered_names = set(filtered_names) - names_to_skip
+
+    used_names = []
+    for name in filtered_names:
+        if utils.has_symbol_usage(symbol=name, file_content=file_content):
+            used_names.append(name)
+
+    return PythonFileTransitiveNamesResponse(names=tuple(used_names))
 
 
 @rule("Gets imports used from transitive Python file")
@@ -433,7 +470,7 @@ async def get_python_file_defined_names_from_import(
     for name in py_file_import_defined_names_rec.py_import.names:
         if py_file_import_defined_names_rec.py_file_info.has_name(name):
             defined_names.append(name)
-    return PythonFileImportDefinedNamesResponse(defined_names=defined_names)
+    return PythonFileImportDefinedNamesResponse(defined_names=tuple(defined_names))
 
 
 def rules() -> Iterable[Rule]:

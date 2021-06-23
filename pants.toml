@@ -1,5 +1,5 @@
 [GLOBAL]
-pants_version = "2.5.0"
+pants_version = "2.5.1rc3"
 print_stacktrace = true
 pythonpath = ["%(buildroot)s/pants-plugins"]
 backend_packages = [

@@ -6,15 +6,30 @@ from pants.backend.python.target_types import PythonLibrary, PythonSources, Pyth
 from pants.core.goals.fmt import FmtResult
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.console import Console
-from pants.engine.fs import CreateDigest, Digest, DigestContents, FileContent, PathGlobs, Workspace
+from pants.engine.fs import (
+    CreateDigest,
+    Digest,
+    DigestContents,
+    FileContent,
+    PathGlobs,
+    Workspace,
+)
 from pants.engine.goal import Goal, GoalSubsystem, LineOriented
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
-from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
+from pants.engine.target import (
+    RegisteredTargetTypes,
+    Sources,
+    Target,
+    Targets,
+    UnrecognizedTargetTypeException,
+)
 from pants.util.filtering import and_filters, create_filters
 from wildcard_imports.autoflake_rules import AutoflakeRequest
 from wildcard_imports.autoimport_rules import AutoImportRequest
 from wildcard_imports.import_fixer import utils
-from wildcard_imports.import_fixer.python_file_import_recs import PythonFileImportRecommendations
+from wildcard_imports.import_fixer.python_file_import_recs import (
+    PythonFileImportRecommendations,
+)
 from wildcard_imports.import_fixer.python_file_info import PythonFileInfo
 from wildcard_imports.import_fixer.python_package_helper import for_python_files
 from wildcard_imports.isort_rules import IsortRequest
@@ -148,7 +163,6 @@ async def wildcard_imports(
 
     # TODO: this is a hack because writting and reloading digest right away is not reliable.
     time.sleep(1)
-
     digest = await Get(Digest, PathGlobs(wildcard_import_sources))
     res: FmtResult = await Get(
         FmtResult,
@@ -162,7 +176,6 @@ async def wildcard_imports(
 
     # TODO: this is a hack because writting and reloading digest right away is not reliable.
     time.sleep(1)
-
     digest = await Get(Digest, PathGlobs(wildcard_import_sources))
     res: FmtResult = await Get(
         FmtResult,
@@ -174,10 +187,9 @@ async def wildcard_imports(
     ##########################
     # Fix Wildcard Imports
     ##########################
+    # Pre-Format imports for simpler runs
     # TODO: this is a hack because writting and reloading digest right away is not reliable.
     time.sleep(1)
-
-    # Pre-Format imports for simpler runs
     digest = await Get(Digest, PathGlobs(wildcard_import_sources))
     res: FmtResult = await Get(
         FmtResult,
@@ -186,10 +198,9 @@ async def wildcard_imports(
     )
     workspace.write_digest(res.output)
 
+    # Load file content and get wildcard import reccommendations
     # TODO: this is a hack because writting and reloading digest right away is not reliable.
     time.sleep(1)
-
-    # Load file content and get wildcard import reccommendations
     all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
     py_package_helper = for_python_files(
         py_files_digest_contents=all_py_files_digest_contents,
@@ -243,8 +254,12 @@ async def wildcard_imports(
         set(list(wildcard_import_recs) + list(transitive_import_recs))
     )
     digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in all_import_recs]))
+    workspace.write_digest(digest)
 
     # Run autoflake and autoimport on changed files
+    # TODO: this is a hack because writting and reloading digest right away is not reliable.
+    time.sleep(1)
+    digest = await Get(Digest, PathGlobs([import_rec.py_file_info.path for import_rec in wildcard_import_recs]))
     res: FmtResult = await Get(
         FmtResult,
         AutoflakeRequest,
@@ -258,7 +273,7 @@ async def wildcard_imports(
     # Pre-format imports with isort for simplier duplication fixes
     # TODO: this sleep is a hack because writting and reloading digest right away is not reliable.
     time.sleep(1)
-    digest = await Get(Digest, PathGlobs(wildcard_import_sources))
+    digest = await Get(Digest, PathGlobs([import_rec.py_file_info.path for import_rec in wildcard_import_recs]))
     res: FmtResult = await Get(
         FmtResult,
         IsortRequest,
@@ -287,12 +302,18 @@ async def wildcard_imports(
             PythonFileImportRecommendations,
             PythonFileDuplicateImportRecommendationsRequest,
             PythonFileDuplicateImportRecommendationsRequest(
-                py_file_info=import_rec.py_file_info, py_package_helper=py_package_helper
+                py_file_info=py_package_helper.get_python_file_info_from_file_path(import_rec.py_file_info.path),
+                py_package_helper=py_package_helper,
             ),
         )
-        for import_rec in all_import_recs
+        for import_rec in wildcard_import_recs
     )
     digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in dup_import_recs]))
+    workspace.write_digest(digest)
+
+    # TODO: this sleep is a hack because writting and reloading digest right away is not reliable.
+    time.sleep(1)
+    digest = await Get(Digest, PathGlobs([import_rec.py_file_info.path for import_rec in dup_import_recs]))
     res: FmtResult = await Get(
         FmtResult,
         IsortRequest,
@@ -303,7 +324,6 @@ async def wildcard_imports(
     ##########################
     # Fix Missing Imports
     #########################
-    # Reload file content
     # TODO: this sleep is a hack because writting and reloading digest right away is not reliable.
     time.sleep(1)
     previous_py_files_digest_contents = all_py_files_digest_contents
@@ -316,11 +336,7 @@ async def wildcard_imports(
         ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
     )
     missing_import_files: List[FileContent] = []
-    paths_to_update = set(
-        [import_rec.py_file_info.path for import_rec in all_import_recs]
-        + [py_file_info.path for py_file_info in all_transitive_py_file_info]  # noqa: W503
-    )
-    digest = await Get(Digest, PathGlobs(paths_to_update))
+    digest = await Get(Digest, PathGlobs([import_rec.py_file_info.path for import_rec in wildcard_import_recs]))
     digest_contents: DigestContents = await Get(DigestContents, Digest, digest)
     for file_content in digest_contents:
         if utils.has_missing_import(file_content=file_content.content):
@@ -338,6 +354,26 @@ async def wildcard_imports(
     )
     digest = await Get(Digest, CreateDigest([import_rec.fixed_file_content for import_rec in missing_import_recs]))
     workspace.write_digest(digest)
+
+    # Final formatting
+    # TODO: this is a hack because writting and reloading digest right away is not reliable.
+    time.sleep(1)
+    digest = await Get(Digest, PathGlobs([import_rec.py_file_info.path for import_rec in wildcard_import_recs]))
+    res: FmtResult = await Get(
+        FmtResult,
+        IsortRequest,
+        IsortRequest(
+            argv=(
+                "--line-length=120",
+                "--use-parentheses",
+                "--trailing-comma",
+                "--multi-line=3",
+                "--force-grid-wrap=0",
+            ),
+            digest=digest,
+        ),
+    )
+    workspace.write_digest(res.output)
     return WildcardImports(exit_code=0)
 
 

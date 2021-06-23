@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 from wildcard_imports.import_fixer.python_file_info import PythonFileInfo, PythonImport
 from wildcard_imports.import_fixer.python_package_helper import PythonPackageHelper
@@ -38,6 +38,13 @@ class PythonFileTransitiveImportRecommendationsRequest:
     py_file_info: PythonFileInfo
     transitive_py_file_info: PythonFileInfo
     py_package_helper: PythonPackageHelper
+
+    @property
+    def py_import(self) -> PythonImport:
+        for py_import in self.transitive_py_file_info.imports:
+            if self.py_file_info.module_key == py_import.modules_str:
+                return py_import
+        raise Exception("Import not found!")
 
 
 @dataclass(frozen=True)
