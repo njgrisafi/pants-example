@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Tuple
 
-from wildcard_imports.import_fixer.python_file_info import PythonFileInfo, PythonImport
-from wildcard_imports.import_fixer.python_package_helper import PythonPackageHelper
+from import_fixer.python_connect.python_file_info import PythonFileInfo, PythonImport
+from import_fixer.python_connect.python_package_helper import PythonPackageHelper
 
 
 @dataclass(frozen=True)

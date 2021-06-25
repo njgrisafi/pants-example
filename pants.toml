@@ -8,7 +8,7 @@ backend_packages = [
   "custom_autoflake",
   "custom_black",
   "custom_flake8",
-  "wildcard_imports"
+  "import_fixer"
 ]
 plugins = [
   "autoflake>=1.4",

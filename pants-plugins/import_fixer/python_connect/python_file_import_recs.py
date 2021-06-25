@@ -2,9 +2,9 @@ import re
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+from import_fixer.python_connect import python_utils
+from import_fixer.python_connect.python_file_info import PythonFileInfo, PythonImport
 from pants.engine.fs import FileContent
-from wildcard_imports.import_fixer import utils
-from wildcard_imports.import_fixer.python_file_info import PythonFileInfo, PythonImport
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,7 @@ class PythonFileImportRecommendations:
                     content = re.sub(regex_str, "\n".join(replacement_import_strs), content)
             # Add new import recs
             elif len(import_rec.recommendations) > 0:
-                import_matches = utils.get_top_level_import_matches(content)
+                import_matches = python_utils.get_top_level_import_matches(content)
                 insert_line = import_matches[-1].span()[1] if len(import_matches) > 0 else 0
                 import_content_to_insert = "\n".join([py_import.import_str for py_import in import_rec.recommendations])
                 content = content[:insert_line] + f"\n{import_content_to_insert}\n" + content[insert_line:]

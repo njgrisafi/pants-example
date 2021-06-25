@@ -1,22 +1,24 @@
 from typing import Iterable
 
-from pants.engine.rules import Rule
-from wildcard_imports import (
+from import_fixer import (
     autoflake_rules,
     autoimport_rules,
+    cross_imports_rules,
+    import_fixer,
     isort_rules,
-    wildcard_imports,
     wildcard_imports_rules,
     wildcard_imports_skip_field,
 )
+from pants.engine.rules import Rule
 
 
 def rules() -> Iterable[Rule]:
     return [
-        *wildcard_imports.rules(),
+        *import_fixer.rules(),
         *wildcard_imports_rules.rules(),
         *isort_rules.rules(),
         *autoflake_rules.rules(),
         *autoimport_rules.rules(),
         *wildcard_imports_skip_field.rules(),
+        *cross_imports_rules.rules(),
     ]

@@ -1,20 +1,14 @@
 from collections import defaultdict
 from typing import Dict, Iterable, List, Tuple
 
-from pants.core.goals.fmt import FmtResult
-from pants.engine.fs import Digest, DigestContents, PathGlobs
-from pants.engine.rules import Get, MultiGet, Rule, collect_rules, rule
-from wildcard_imports.import_fixer import utils
-from wildcard_imports.import_fixer.python_file_import_recs import (
+from import_fixer.isort_rules import IsortRequest
+from import_fixer.python_connect import python_utils
+from import_fixer.python_connect.python_file_import_recs import (
     PythonFileImportRecommendations,
     PythonImportRecommendation,
 )
-from wildcard_imports.import_fixer.python_file_info import (
-    PythonImport,
-    from_python_file_path,
-)
-from wildcard_imports.isort_rules import IsortRequest
-from wildcard_imports.rules_param_types import (
+from import_fixer.python_connect.python_file_info import PythonImport, from_python_file_path
+from import_fixer.wildcard_imports_rules_param_types import (
     DuplicateImportRecommendationsRequest,
     MissingImportRecommendationRequest,
     PythonFileDuplicateImportRecommendationsRequest,
@@ -35,6 +29,9 @@ from wildcard_imports.rules_param_types import (
     TransitiveImportRecommendationsResponse,
     WildcardImportRecommendationsRequest,
 )
+from pants.core.goals.fmt import FmtResult
+from pants.engine.fs import Digest, DigestContents, PathGlobs
+from pants.engine.rules import Get, MultiGet, Rule, collect_rules, rule
 
 
 @rule(desc="Gets all wildcard import recommendations for a python file")
@@ -172,8 +169,11 @@ def get_submodule_import_recommendations_for_python_file(
         python_file_info,
     ) in py_file_submodule_import_recs_req.py_package_helper.py_file_info_by_module.items():
         symbol = python_file_info.module_key.split(".")[-1]
-        if py_file_submodule_import_recs_req.module_py_import.modules_str in module_key and utils.has_symbol_usage(
-            symbol=symbol, file_content=py_file_submodule_import_recs_req.py_file_info.file_content_str
+        if (
+            py_file_submodule_import_recs_req.module_py_import.modules_str in module_key
+            and python_utils.has_symbol_usage(
+                symbol=symbol, file_content=py_file_submodule_import_recs_req.py_file_info.file_content_str
+            )
         ):
             module_directory_python_imports.append(
                 PythonImport(
@@ -343,7 +343,7 @@ async def get_duplicate_import_recommendations(
 async def get_file_missing_import_recommendations(
     py_file_missing_import_rec_req: PythonFileMissingImportRecommendationsRequest,
 ) -> PythonFileImportRecommendations:
-    missing_names = utils.get_missing_import_names(
+    missing_names = python_utils.get_missing_import_names(
         file_content=py_file_missing_import_rec_req.py_file_info.file_content
     )
     get_commands: List[Get] = []
@@ -369,7 +369,7 @@ async def get_missing_import_recommendation(
     missing_import_rec_req: MissingImportRecommendationRequest,
 ) -> PythonImportRecommendation:
     missing_name = missing_import_rec_req.missing_name
-    if utils.is_module_package(import_name=missing_name):
+    if python_utils.is_module_package(import_name=missing_name):
         return PythonImportRecommendation(
             source_import=None,
             recommendations=(PythonImport(modules=(), level=0, names=(missing_name,), aliases=()),),
@@ -419,7 +419,7 @@ async def get_names_used_from_transitive_python_file(
 
     used_names = []
     for name in filtered_names:
-        if utils.has_symbol_usage(symbol=name, file_content=file_content):
+        if python_utils.has_symbol_usage(symbol=name, file_content=file_content):
             used_names.append(name)
 
     return PythonFileTransitiveNamesResponse(names=tuple(used_names))
@@ -445,7 +445,7 @@ async def get_imports_used_from_transitive_python_file(
             defined_names = res.defined_names
         names_used = []
         for name in defined_names:
-            if utils.has_symbol_usage(symbol=name, file_content=source_py_file.file_content_str):
+            if python_utils.has_symbol_usage(symbol=name, file_content=source_py_file.file_content_str):
                 names_used.append(name)
         if py_import.modules_str in py_package_helper.ignored_import_names_by_module:
             names_to_skip = py_package_helper.ignored_import_names_by_module[py_import.modules_str]

@@ -1,50 +1,45 @@
 import random
 import time
+from enum import Enum
 from typing import Callable, Dict, Iterable, List, Tuple
 
-from pants.backend.python.target_types import PythonLibrary, PythonSources, PythonTests
-from pants.core.goals.fmt import FmtResult
-from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
-from pants.engine.console import Console
-from pants.engine.fs import (
-    CreateDigest,
-    Digest,
-    DigestContents,
-    FileContent,
-    PathGlobs,
-    Workspace,
+from import_fixer.autoflake_rules import AutoflakeRequest
+from import_fixer.autoimport_rules import AutoImportRequest
+from import_fixer.cross_imports_rules_param_types import (
+    PythonPackageCrossImportStatsRequest,
+    PythonPackageCrossImportStatsResponse,
 )
-from pants.engine.goal import Goal, GoalSubsystem, LineOriented
-from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
-from pants.engine.target import (
-    RegisteredTargetTypes,
-    Sources,
-    Target,
-    Targets,
-    UnrecognizedTargetTypeException,
-)
-from pants.util.filtering import and_filters, create_filters
-from wildcard_imports.autoflake_rules import AutoflakeRequest
-from wildcard_imports.autoimport_rules import AutoImportRequest
-from wildcard_imports.import_fixer import utils
-from wildcard_imports.import_fixer.python_file_import_recs import (
-    PythonFileImportRecommendations,
-)
-from wildcard_imports.import_fixer.python_file_info import PythonFileInfo
-from wildcard_imports.import_fixer.python_package_helper import for_python_files
-from wildcard_imports.isort_rules import IsortRequest
-from wildcard_imports.wildcard_imports_rules import (
+from import_fixer.isort_rules import IsortRequest
+from import_fixer.python_connect import python_package_helper, python_utils
+from import_fixer.python_connect.python_file_import_recs import PythonFileImportRecommendations
+from import_fixer.python_connect.python_file_info import PythonFileInfo
+from import_fixer.python_connect.python_package_helper import for_python_files
+from import_fixer.wildcard_imports_rules_param_types import (
     PythonFileDuplicateImportRecommendationsRequest,
     PythonFileMissingImportRecommendationsRequest,
     PythonFileTransitiveImportRecommendationsRequest,
     PythonFileWildcardImportRecommendationsRequest,
 )
-from wildcard_imports.wildcard_imports_skip_field import WildcardImportsSkipField
+from import_fixer.wildcard_imports_skip_field import WildcardImportsSkipField
+from pants.backend.python.target_types import PythonLibrary, PythonSources, PythonTests
+from pants.core.goals.fmt import FmtResult
+from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
+from pants.engine.console import Console
+from pants.engine.fs import CreateDigest, Digest, DigestContents, FileContent, PathGlobs, Workspace
+from pants.engine.goal import Goal, GoalSubsystem, LineOriented
+from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
+from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
+from pants.util.filtering import and_filters, create_filters
 
 
-class WildcardImportsSubsystem(LineOriented, GoalSubsystem):
-    name = "wildcard-imports"
-    help = "Parses targets digest for wildcard imports"
+class ImportFixerJobs(Enum):
+    WILDCARD_IMPORTS = "wildcard_imports"
+    CROSS_IMPORTS = "cross_imports"
+
+
+class ImportFixerSubsystem(LineOriented, GoalSubsystem):
+    name = "import-fixer"
+    help = "Performs various import related jobs on targets digest and can perform autofixes."
 
     @classmethod
     def register_options(cls, register) -> None:
@@ -59,7 +54,13 @@ class WildcardImportsSubsystem(LineOriented, GoalSubsystem):
             "--fix",
             type=bool,
             default=False,
-            help="True to attempt autofix for widcard imports.",
+            help="True to attempt autofix import issues.",
+        )
+        register(
+            "--jobs",
+            type=list,
+            member_type=ImportFixerJobs,
+            help="Jobs to run on targets.",
         )
         register(
             "--include-top-level-package",
@@ -74,7 +75,7 @@ class WildcardImportsSubsystem(LineOriented, GoalSubsystem):
         register(
             "--ignored-names-by-module",
             type=dict,
-            help=("Optional provided mapping of modules to names to ignore" "For example: {'common': ['freeze_time']}"),
+            help=("Optional provided mapping of modules to names to ignore For example: {'common': ['freeze_time']}"),
         )
 
     @property
@@ -90,22 +91,26 @@ class WildcardImportsSubsystem(LineOriented, GoalSubsystem):
         return self.options.fix
 
     @property
+    def jobs(self) -> List[ImportFixerJobs]:
+        return self.options.jobs
+
+    @property
     def ignored_names_by_module(self) -> Dict[str, Tuple[str, ...]]:
         return self.options.ignored_names_by_module
 
 
-class WildcardImports(Goal):
-    subsystem_cls = WildcardImportsSubsystem
+class ImportFixer(Goal):
+    subsystem_cls = ImportFixerSubsystem
 
 
 TargetFilter = Callable[[Target], bool]
 allowed_target_types = RegisteredTargetTypes.create({tgt_type for tgt_type in [PythonLibrary, PythonTests]})
 
 
-@goal_rule
-async def wildcard_imports(
-    console: Console, wildcard_imports_subsystem: WildcardImportsSubsystem, targets: Targets, workspace: Workspace
-) -> WildcardImports:
+@goal_rule  # noqa: C901
+async def import_fixer(
+    console: Console, import_fixer_subsystem: ImportFixerSubsystem, targets: Targets, workspace: Workspace
+) -> ImportFixer:
     # Filter targets to run on
     def filter_target_type(target_type: str) -> TargetFilter:
         if target_type not in allowed_target_types.aliases:
@@ -114,18 +119,45 @@ async def wildcard_imports(
 
     anded_filter: TargetFilter = and_filters(
         [
-            *(create_filters(wildcard_imports_subsystem.target_types, filter_target_type)),
+            *(create_filters(import_fixer_subsystem.target_types, filter_target_type)),
         ]
     )
-    filtered_targets = [
-        target for target in targets if anded_filter(target) and target.get(WildcardImportsSkipField).value is False
+
+    filtered_targets = [target for target in targets if anded_filter(target)]
+
+    ##############################
+    # Cross Imports
+    ##############################
+    if ImportFixerJobs.CROSS_IMPORTS in import_fixer_subsystem.jobs:
+        all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
+        py_package_helper = for_python_files(
+            py_files_digest_contents=all_py_files_digest_contents,
+            include_top_level_package=import_fixer_subsystem.include_top_level_package,
+            ignored_import_names_by_module=import_fixer_subsystem.ignored_names_by_module,
+        )
+        cross_imports_res: PythonPackageCrossImportStatsResponse = await Get(
+            PythonPackageCrossImportStatsResponse,
+            PythonPackageCrossImportStatsRequest(py_package_helper=py_package_helper),
+        )
+        # Output violating files and exit for failure
+        with import_fixer_subsystem.line_oriented(console) as print_stdout:
+            print_stdout(cross_imports_res.to_json_str)
+        return ImportFixer(exit_code=0)
+
+    ##############################
+    # Wildcard Imports
+    ##############################
+    wildcard_imports_targets = [
+        target for target in filtered_targets if target.get(WildcardImportsSkipField).value is False
     ]
 
     # Get sources and contents
     sources: SourceFiles = await Get(
         SourceFiles,
         SourceFilesRequest(
-            [tgt.get(Sources) for tgt in filtered_targets], for_sources_types=(PythonSources,), enable_codegen=False
+            [tgt.get(Sources) for tgt in wildcard_imports_targets],
+            for_sources_types=(PythonSources,),
+            enable_codegen=False,
         ),
     )
     digest_contents: DigestContents = await Get(DigestContents, Digest, sources.snapshot.digest)
@@ -133,21 +165,21 @@ async def wildcard_imports(
     # Parse contents for 'import *' patterns
     wildcard_import_sources = []
     for file_content in digest_contents:
-        if utils.has_wildcard_import(file_content.content):
+        if python_utils.has_wildcard_import(file_content.content):
             wildcard_import_sources.append(file_content.path)
 
     # No wildcard imports!
     if len(wildcard_import_sources) == 0:
-        return WildcardImports(exit_code=0)
+        return ImportFixer(exit_code=0)
 
     # Cheeck only, no fixes required
-    if wildcard_imports_subsystem.fix is False:
+    if import_fixer_subsystem.fix is False:
         # Output violating files and exit for failure
-        with wildcard_imports_subsystem.line_oriented(console) as print_stdout:
+        with import_fixer_subsystem.line_oriented(console) as print_stdout:
             print_stdout("Found 'import *' usage in the following files:")
             for source in wildcard_import_sources:
                 print_stdout(source)
-        return WildcardImports(exit_code=1)
+        return ImportFixer(exit_code=1)
 
     # Pre-Fix imports for with autoflake
     digest = await Get(Digest, PathGlobs(wildcard_import_sources))
@@ -204,8 +236,8 @@ async def wildcard_imports(
     all_py_files_digest_contents = await Get(DigestContents, PathGlobs(["app/**/*.py"]))
     py_package_helper = for_python_files(
         py_files_digest_contents=all_py_files_digest_contents,
-        include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
-        ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
+        include_top_level_package=import_fixer_subsystem.include_top_level_package,
+        ignored_import_names_by_module=import_fixer_subsystem.ignored_names_by_module,
     )
     wildcard_import_recs: Tuple[PythonFileImportRecommendations, ...] = await MultiGet(
         Get(
@@ -294,8 +326,8 @@ async def wildcard_imports(
     # Fix import duplicate imports
     py_package_helper = for_python_files(
         py_files_digest_contents=all_py_files_digest_contents,
-        include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
-        ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
+        include_top_level_package=import_fixer_subsystem.include_top_level_package,
+        ignored_import_names_by_module=import_fixer_subsystem.ignored_names_by_module,
     )
     dup_import_recs = await MultiGet(
         Get(
@@ -332,14 +364,14 @@ async def wildcard_imports(
     )
     py_package_helper = for_python_files(
         py_files_digest_contents=all_py_files_digest_contents,
-        include_top_level_package=wildcard_imports_subsystem.include_top_level_package,
-        ignored_import_names_by_module=wildcard_imports_subsystem.ignored_names_by_module,
+        include_top_level_package=import_fixer_subsystem.include_top_level_package,
+        ignored_import_names_by_module=import_fixer_subsystem.ignored_names_by_module,
     )
     missing_import_files: List[FileContent] = []
     digest = await Get(Digest, PathGlobs([import_rec.py_file_info.path for import_rec in wildcard_import_recs]))
     digest_contents: DigestContents = await Get(DigestContents, Digest, digest)
     for file_content in digest_contents:
-        if utils.has_missing_import(file_content=file_content.content):
+        if python_utils.has_missing_import(file_content=file_content.content):
             missing_import_files.append(file_content)
     missing_import_recs: Tuple[PythonFileImportRecommendations, ...] = await MultiGet(
         Get(
@@ -374,7 +406,7 @@ async def wildcard_imports(
         ),
     )
     workspace.write_digest(res.output)
-    return WildcardImports(exit_code=0)
+    return ImportFixer(exit_code=0)
 
 
 def rules() -> Iterable[Rule]:
