@@ -1,6 +1,6 @@
 import importlib
 import re
-from typing import Tuple
+from typing import Optional, Tuple
 
 import autoflake
 from pyflakes.messages import UndefinedExport, UndefinedName
@@ -50,6 +50,10 @@ def has_symbol_usage(symbol: str, file_content: str) -> bool:
         return bool(re.search(r"([^.\n\w]|^| |\n){}+([.|(|)||:|,])".format(symbol), file_content))
     except Exception:
         return False
+
+
+def get_wildcard_import_count(file_content: bytes) -> int:
+    return len(match_import_star_re.findall(file_content))
 
 
 def has_wildcard_import(file_content: bytes) -> bool:

@@ -3,7 +3,11 @@ from dataclasses import dataclass
 from typing import Dict, Tuple
 
 from import_fixer.python_connect import python_utils
-from import_fixer.python_connect.python_file_info import PythonFileInfo, PythonImport, from_python_file_path
+from import_fixer.python_connect.python_file_info import (
+    PythonFileInfo,
+    PythonImport,
+    from_python_file_path,
+)
 from pants.engine.fs import DigestContents
 from pants.util.frozendict import FrozenDict
 
@@ -83,42 +87,4 @@ def for_python_files(
         py_file_info_by_module=FrozenDict(file_info_by_module),
         py_file_info_by_import_module_str=FrozenDict(file_info_by_import_module_str),
         ignored_import_names_by_module=FrozenDict(ignored_import_names_by_module),
-    )
-
-
-def update_for_python_files(
-    py_files_digest_contents: DigestContents, py_package_helper: PythonPackageHelper
-) -> PythonPackageHelper:
-    # Generate py_file_info_by_module mapping and normalize relative imports
-    file_info_by_module: Dict[str, PythonFileInfo] = py_package_helper.py_file_info_by_module
-    for file_content in py_files_digest_contents:
-        result_file_info = from_python_file_path(
-            file_path=file_content.path,
-            file_content=file_content.content,
-            module_key=python_utils.generate_relative_module_key(
-                py_file_path=file_content.path, include_top_level_package=py_package_helper.include_top_level_package
-            ),
-        )
-        file_info_by_module[result_file_info.module_key] = result_file_info
-    file_info_by_module = unwind_relative_imports(py_file_info_by_module=file_info_by_module)
-
-    # Generate py_file_info_by_import_star mapping
-    file_info_by_import_module_str: Dict[
-        str, Tuple[PythonFileInfo, ...]
-    ] = py_package_helper.py_file_info_by_import_module_str
-    for py_file_info in file_info_by_module.values():
-        for py_import in py_file_info.imports:
-            [
-                py_file_info
-                for py_file_info in file_info_by_import_module_str.get(py_import.modules_str, ())
-                if py_file_info.path != py_file_info.path
-            ]
-            file_info_by_import_module_str[py_import.modules_str] = tuple(
-                list(file_info_by_import_module_str[py_import.modules_str]) + [py_file_info]
-            )
-    return PythonPackageHelper(
-        include_top_level_package=py_package_helper.include_top_level_package,
-        py_file_info_by_module=FrozenDict(file_info_by_module),
-        py_file_info_by_import_module_str=FrozenDict(file_info_by_import_module_str),
-        ignored_import_names_by_module=file_info_by_module.ignored_import_names_by_module,
     )

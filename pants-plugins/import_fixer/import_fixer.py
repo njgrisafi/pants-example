@@ -1,3 +1,4 @@
+import json
 import random
 import time
 from enum import Enum
@@ -11,7 +12,9 @@ from import_fixer.cross_imports_rules_param_types import (
 )
 from import_fixer.isort_rules import IsortRequest
 from import_fixer.python_connect import python_package_helper, python_utils
-from import_fixer.python_connect.python_file_import_recs import PythonFileImportRecommendations
+from import_fixer.python_connect.python_file_import_recs import (
+    PythonFileImportRecommendations,
+)
 from import_fixer.python_connect.python_file_info import PythonFileInfo
 from import_fixer.python_connect.python_package_helper import for_python_files
 from import_fixer.wildcard_imports_rules_param_types import (
@@ -25,21 +28,34 @@ from pants.backend.python.target_types import PythonLibrary, PythonSources, Pyth
 from pants.core.goals.fmt import FmtResult
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.console import Console
-from pants.engine.fs import CreateDigest, Digest, DigestContents, FileContent, PathGlobs, Workspace
+from pants.engine.fs import (
+    CreateDigest,
+    Digest,
+    DigestContents,
+    FileContent,
+    PathGlobs,
+    Workspace,
+)
 from pants.engine.goal import Goal, GoalSubsystem, LineOriented
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
-from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
+from pants.engine.target import (
+    RegisteredTargetTypes,
+    Sources,
+    Target,
+    Targets,
+    UnrecognizedTargetTypeException,
+)
 from pants.util.filtering import and_filters, create_filters
 
 
 class ImportFixerJobs(Enum):
-    WILDCARD_IMPORTS = "wildcard_imports"
-    CROSS_IMPORTS = "cross_imports"
+    WILDCARD_IMPORTS = "wildcard-imports"
+    CROSS_IMPORTS = "cross-imports"
 
 
 class ImportFixerSubsystem(LineOriented, GoalSubsystem):
     name = "import-fixer"
-    help = "Performs various import related jobs on targets digest and can perform autofixes."
+    help = "Performs various import inspections on target digest and supports autofixes."
 
     @classmethod
     def register_options(cls, register) -> None:
@@ -51,16 +67,28 @@ class ImportFixerSubsystem(LineOriented, GoalSubsystem):
             help="Run on these target types, only `python_tests` and `python_library` values are accepted.",
         )
         register(
+            "--jobs",
+            type=list,
+            member_type=ImportFixerJobs,
+            help="Jobs to run on targets.",
+        )
+        register(
             "--fix",
             type=bool,
             default=False,
             help="True to attempt autofix import issues.",
         )
         register(
-            "--jobs",
-            type=list,
-            member_type=ImportFixerJobs,
-            help="Jobs to run on targets.",
+            "--ignore-skip",
+            type=bool,
+            default=False,
+            help="True to attempt ignore skip flags and run on all targets.",
+        )
+        register(
+            "--json-output",
+            type=bool,
+            default=False,
+            help="True to will output json verbose results.",
         )
         register(
             "--include-top-level-package",
@@ -89,6 +117,14 @@ class ImportFixerSubsystem(LineOriented, GoalSubsystem):
     @property
     def fix(self) -> bool:
         return self.options.fix
+
+    @property
+    def ignore_skip(self) -> bool:
+        return self.options.ignore_skip
+
+    @property
+    def json_output(self) -> bool:
+        return self.options.json_output
 
     @property
     def jobs(self) -> List[ImportFixerJobs]:
@@ -139,17 +175,21 @@ async def import_fixer(
             PythonPackageCrossImportStatsResponse,
             PythonPackageCrossImportStatsRequest(py_package_helper=py_package_helper),
         )
-        # Output violating files and exit for failure
+        # Output cross-imports results
         with import_fixer_subsystem.line_oriented(console) as print_stdout:
             print_stdout(cross_imports_res.to_json_str)
-        return ImportFixer(exit_code=0)
 
     ##############################
     # Wildcard Imports
     ##############################
-    wildcard_imports_targets = [
-        target for target in filtered_targets if target.get(WildcardImportsSkipField).value is False
-    ]
+    if ImportFixerJobs.WILDCARD_IMPORTS not in import_fixer_subsystem.jobs:
+        return ImportFixer(exit_code=0)
+
+    wildcard_imports_targets = filtered_targets
+    if import_fixer_subsystem.ignore_skip is False:
+        wildcard_imports_targets = [
+            target for target in filtered_targets if target.get(WildcardImportsSkipField).value is False
+        ]
 
     # Get sources and contents
     sources: SourceFiles = await Get(
@@ -163,26 +203,29 @@ async def import_fixer(
     digest_contents: DigestContents = await Get(DigestContents, Digest, sources.snapshot.digest)
 
     # Parse contents for 'import *' patterns
-    wildcard_import_sources = []
+    wildcard_import_sources: Dict[str, int] = {}
     for file_content in digest_contents:
-        if python_utils.has_wildcard_import(file_content.content):
-            wildcard_import_sources.append(file_content.path)
+        num_wildcard_imports = python_utils.get_wildcard_import_count(file_content.content)
+        if num_wildcard_imports > 0:
+            wildcard_import_sources[file_content.path] = num_wildcard_imports
 
     # No wildcard imports!
-    if len(wildcard_import_sources) == 0:
+    if len(wildcard_import_sources.keys()) == 0:
         return ImportFixer(exit_code=0)
 
     # Cheeck only, no fixes required
     if import_fixer_subsystem.fix is False:
         # Output violating files and exit for failure
         with import_fixer_subsystem.line_oriented(console) as print_stdout:
-            print_stdout("Found 'import *' usage in the following files:")
-            for source in wildcard_import_sources:
-                print_stdout(source)
+            output = "Found 'import *' usage in the following files:\n"
+            output = output + "\n".join(path for path in wildcard_import_sources.keys())
+            if import_fixer_subsystem.json_output:
+                output = json.dumps(wildcard_import_sources)
+            print_stdout(output)
         return ImportFixer(exit_code=1)
 
     # Pre-Fix imports for with autoflake
-    digest = await Get(Digest, PathGlobs(wildcard_import_sources))
+    digest = await Get(Digest, PathGlobs(wildcard_import_sources.keys()))
     res: FmtResult = await Get(
         FmtResult,
         AutoflakeRequest,
@@ -195,7 +238,7 @@ async def import_fixer(
 
     # TODO: this is a hack because writting and reloading digest right away is not reliable.
     time.sleep(1)
-    digest = await Get(Digest, PathGlobs(wildcard_import_sources))
+    digest = await Get(Digest, PathGlobs(wildcard_import_sources.keys()))
     res: FmtResult = await Get(
         FmtResult,
         IsortRequest,
@@ -208,7 +251,7 @@ async def import_fixer(
 
     # TODO: this is a hack because writting and reloading digest right away is not reliable.
     time.sleep(1)
-    digest = await Get(Digest, PathGlobs(wildcard_import_sources))
+    digest = await Get(Digest, PathGlobs(wildcard_import_sources.keys()))
     res: FmtResult = await Get(
         FmtResult,
         AutoImportRequest,
@@ -222,7 +265,7 @@ async def import_fixer(
     # Pre-Format imports for simpler runs
     # TODO: this is a hack because writting and reloading digest right away is not reliable.
     time.sleep(1)
-    digest = await Get(Digest, PathGlobs(wildcard_import_sources))
+    digest = await Get(Digest, PathGlobs(wildcard_import_sources.keys()))
     res: FmtResult = await Get(
         FmtResult,
         IsortRequest,

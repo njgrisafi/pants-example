@@ -7,7 +7,10 @@ from import_fixer.python_connect.python_file_import_recs import (
     PythonFileImportRecommendations,
     PythonImportRecommendation,
 )
-from import_fixer.python_connect.python_file_info import PythonImport, from_python_file_path
+from import_fixer.python_connect.python_file_info import (
+    PythonImport,
+    from_python_file_path,
+)
 from import_fixer.wildcard_imports_rules_param_types import (
     DuplicateImportRecommendationsRequest,
     MissingImportRecommendationRequest,

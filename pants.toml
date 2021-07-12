@@ -8,7 +8,7 @@ backend_packages = [
   "custom_autoflake",
   "custom_black",
   "custom_flake8",
-  "import_fixer"
+  "import_fixer",
 ]
 plugins = [
   "autoflake>=1.4",
@@ -33,9 +33,6 @@ root_patterns = [
 [autoflake]
 args = ["--remove-all-unused-imports"]
 
-[isort]
-config = "pyproject.toml"
-
 [python-infer]
 inits = true
 string_imports = true
@@ -45,11 +42,7 @@ transitive = true
 closed = true
 
 [black]
-config = "pyproject.toml"
 version = "black==21.5b1"
-
-[flake8]
-config = "setup.cfg"
 
 [anonymous-telemetry]
 enabled = false
