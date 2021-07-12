@@ -5,6 +5,7 @@ from import_fixer import (
     autoimport_rules,
     cross_imports_rules,
     import_fixer,
+    indirect_imports_rules,
     isort_rules,
     wildcard_imports_rules,
     wildcard_imports_skip_field,
@@ -21,4 +22,5 @@ def rules() -> Iterable[Rule]:
         *autoimport_rules.rules(),
         *wildcard_imports_skip_field.rules(),
         *cross_imports_rules.rules(),
+        *indirect_imports_rules.rules(),
     ]

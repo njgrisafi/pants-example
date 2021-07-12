@@ -10,11 +10,10 @@ from import_fixer.cross_imports_rules_param_types import (
     PythonPackageCrossImportStatsRequest,
     PythonPackageCrossImportStatsResponse,
 )
+from import_fixer.indirect_imports_rules_param_types import PythonFileIndirectImportRecommendationsRequest
 from import_fixer.isort_rules import IsortRequest
-from import_fixer.python_connect import python_package_helper, python_utils
-from import_fixer.python_connect.python_file_import_recs import (
-    PythonFileImportRecommendations,
-)
+from import_fixer.python_connect import python_utils
+from import_fixer.python_connect.python_file_import_recs import PythonFileImportRecommendations
 from import_fixer.python_connect.python_file_info import PythonFileInfo
 from import_fixer.python_connect.python_package_helper import for_python_files
 from import_fixer.wildcard_imports_rules_param_types import (
@@ -28,29 +27,17 @@ from pants.backend.python.target_types import PythonLibrary, PythonSources, Pyth
 from pants.core.goals.fmt import FmtResult
 from pants.core.util_rules.source_files import SourceFiles, SourceFilesRequest
 from pants.engine.console import Console
-from pants.engine.fs import (
-    CreateDigest,
-    Digest,
-    DigestContents,
-    FileContent,
-    PathGlobs,
-    Workspace,
-)
+from pants.engine.fs import CreateDigest, Digest, DigestContents, FileContent, PathGlobs, Workspace
 from pants.engine.goal import Goal, GoalSubsystem, LineOriented
 from pants.engine.rules import Get, MultiGet, Rule, collect_rules, goal_rule
-from pants.engine.target import (
-    RegisteredTargetTypes,
-    Sources,
-    Target,
-    Targets,
-    UnrecognizedTargetTypeException,
-)
+from pants.engine.target import RegisteredTargetTypes, Sources, Target, Targets, UnrecognizedTargetTypeException
 from pants.util.filtering import and_filters, create_filters
 
 
 class ImportFixerJobs(Enum):
     WILDCARD_IMPORTS = "wildcard-imports"
     CROSS_IMPORTS = "cross-imports"
+    INDIRECT_IMPORTS = "indirect-imports"
 
 
 class ImportFixerSubsystem(LineOriented, GoalSubsystem):
@@ -159,7 +146,70 @@ async def import_fixer(
         ]
     )
 
-    filtered_targets = [target for target in targets if anded_filter(target)]
+    filtered_targets: List[Target] = [target for target in targets if anded_filter(target)]
+
+    ##############################
+    # Indirect Imports
+    ##############################
+    if ImportFixerJobs.INDIRECT_IMPORTS in import_fixer_subsystem.jobs:
+
+        sources: SourceFiles = await Get(
+            SourceFiles,
+            SourceFilesRequest(
+                [tgt.get(Sources) for tgt in filtered_targets],
+                for_sources_types=(PythonSources,),
+                enable_codegen=False,
+            ),
+        )
+        res: FmtResult = await Get(
+            FmtResult,
+            IsortRequest,
+            IsortRequest(
+                argv=("--force-single-line-imports", "--line-length=100000000", "--float-to-top"),
+                digest=sources.snapshot.digest,
+            ),
+        )
+        workspace.write_digest(res.output)
+
+        # TODO: this sleep is a hack because writting and reloading digest right away is not reliable.
+        time.sleep(1)
+        all_py_files_digest_contents = await Get(
+            DigestContents, PathGlobs(["app/**/*.py", f"{random.randint(a=0, b=1000)}"])
+        )
+        py_package_helper = for_python_files(
+            py_files_digest_contents=all_py_files_digest_contents,
+            include_top_level_package=import_fixer_subsystem.include_top_level_package,
+            ignored_import_names_by_module=import_fixer_subsystem.ignored_names_by_module,
+        )
+        get_commands: List[Get] = []
+        for file_path in sources.files:
+            get_commands.append(
+                Get(
+                    PythonFileImportRecommendations,
+                    PythonFileIndirectImportRecommendationsRequest,
+                    PythonFileIndirectImportRecommendationsRequest(
+                        py_file_info=py_package_helper.get_python_file_info_from_file_path(file_path=file_path),
+                        py_package_helper=py_package_helper,
+                    ),
+                )
+            )
+        indirect_import_recs: Tuple[PythonFileImportRecommendations, ...] = await MultiGet(get_commands)
+        indirect_import_recs = tuple([rec for rec in indirect_import_recs if rec.import_recommendations])
+        if len(indirect_import_recs) == 0:
+            return ImportFixer(exit_code=0)
+
+        # Check only, no fixes required
+        if import_fixer_subsystem.fix:
+            digest = await Get(
+                Digest, CreateDigest([import_rec.fixed_file_content for import_rec in indirect_import_recs])
+            )
+            workspace.write_digest(digest)
+            return ImportFixer(exit_code=0)
+        with import_fixer_subsystem.line_oriented(console) as print_stdout:
+            print_stdout("Indirect imports found in the following files:")
+            for indirect_import_rec in indirect_import_recs:
+                print_stdout(indirect_import_rec.py_file_info.path)
+        return ImportFixer(exit_code=1)
 
     ##############################
     # Cross Imports
