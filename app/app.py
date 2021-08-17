@@ -1,3 +1,5 @@
+import requests
+
 from app.module_1 import example
 
 

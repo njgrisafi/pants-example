@@ -1,9 +1,10 @@
 [GLOBAL]
-pants_version = "2.3.0rc2"
+pants_version = "2.6.1rc1"
+print_stacktrace = true
 backend_packages = [
   "pants.backend.python",
-  "pants.backend.python.mixed_interpreter_constraints"
+  "pants.backend.python.lint.pylint"
 ]
 
 [python-setup]
-interpreter_constraints = ["CPython==2.7.*"]
+interpreter_constraints = ["CPython==3.9.*"]

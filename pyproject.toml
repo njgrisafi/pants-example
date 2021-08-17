@@ -14,7 +14,8 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^2.7"
+python = "^3.9"
+requests = {git = "ssh://git@github.com/psf/requests", rev = "b0e025ade7ed30ed53ab61f542779af7e024932e"}
 
 [tool.poetry.dev-dependencies]
 pytest = "3.1.1"
