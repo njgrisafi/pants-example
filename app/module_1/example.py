@@ -1,3 +1,2 @@
-
 def output():
-    print('\xa0')
+    print("\xa0")

@@ -1,9 +1,15 @@
 [GLOBAL]
-pants_version = "2.3.0rc2"
+pants_version = "2.6.0"
+pythonpath = ["%(buildroot)s/pants-plugins"]
 backend_packages = [
   "pants.backend.python",
-  "pants.backend.python.mixed_interpreter_constraints"
+  "pants.backend.python.lint.black",
+  "pants.backend.python.lint.isort",
+  "find_needle"
 ]
 
 [python-setup]
-interpreter_constraints = ["CPython==2.7.*"]
+interpreter_constraints = ["CPython==3.9.*"]
+
+[anonymous-telemetry]
+enabled = false
