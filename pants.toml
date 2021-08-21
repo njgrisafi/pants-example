@@ -5,7 +5,8 @@ backend_packages = [
   "pants.backend.python",
   "pants.backend.python.lint.black",
   "pants.backend.python.lint.isort",
-  "find_needle"
+  "find_needle",
+  "pre_checks",
 ]
 
 [python-setup]
