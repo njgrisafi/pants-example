@@ -8,8 +8,9 @@ from pants.engine.goal import Goal, GoalSubsystem, LineOriented
 from pants.engine.internals.selectors import Get, MultiGet
 from pants.engine.rules import Rule, collect_rules, goal_rule
 from pants.engine.target import Sources, Targets
-from pre_checks.rules import PreCheckFileRequest, PreCheckFileResult
-from pre_checks.skip_field import SkipPreChecksField
+
+from .rules import PreCheckFileRequest, PreCheckFileResult
+from .skip_field import SkipPreChecksField
 
 
 class PreChecksSubsystem(LineOriented, GoalSubsystem):

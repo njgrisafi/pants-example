@@ -4,7 +4,8 @@ from typing import List, Tuple
 from pants.engine.fs import DigestContents
 from pants.engine.rules import collect_rules, rule
 from pants.util.logging import LogLevel
-from pre_checks.utils import (
+
+from .utils import (
     has_additional_args_in_setup_teardown,
     has_namespace_import_violation,
     has_on_change_handler_violation,
