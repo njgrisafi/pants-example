@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Tuple
 
-from pants.engine.fs import DigestContents
+from pants.engine.fs import DigestContents, FileContent
 from pants.engine.rules import collect_rules, rule
 from pants.util.logging import LogLevel
 
@@ -14,7 +14,7 @@ from .utils import (
 
 @dataclass(frozen=True)
 class PreCheckFileRequest:
-    file_digest_contents: DigestContents
+    file_content: FileContent
 
 
 @dataclass(frozen=True)
@@ -33,16 +33,16 @@ async def pre_check_file(pre_check_file_req: PreCheckFileRequest) -> PreCheckFil
     status = True
     output: List[str] = []
 
-    if has_namespace_import_violation(file_content=pre_check_file_req.file_digest_contents.content):
+    if has_namespace_import_violation(file_content=pre_check_file_req.file_content.content):
         status = False
         output.append("You should not import from app.*")
     if has_on_change_handler_violation(
-        file_path=pre_check_file_req.file_digest_contents.path,
-        file_content=pre_check_file_req.file_digest_contents.content,
+        file_path=pre_check_file_req.file_content.path,
+        file_content=pre_check_file_req.file_content.content,
     ):
         status = False
         output.append("No on_change_patch_module in last 3 lines of file")
-    if has_additional_args_in_setup_teardown(file_content=pre_check_file_req.file_digest_contents.content):
+    if has_additional_args_in_setup_teardown(file_content=pre_check_file_req.file_content.content):
         status = False
         output.append(
             (
@@ -51,7 +51,7 @@ async def pre_check_file(pre_check_file_req: PreCheckFileRequest) -> PreCheckFil
                 "If you need to patch, refer to example class BillingPlanTestE."
             )
         )
-    return PreCheckFileResult(path=pre_check_file_req.file_digest_contents.path, status=status, output=tuple(output))
+    return PreCheckFileResult(path=pre_check_file_req.file_content.path, status=status, output=tuple(output))
 
 
 def rules():
