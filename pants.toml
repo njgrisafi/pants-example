@@ -1,9 +1,8 @@
 [GLOBAL]
-pants_version = "2.3.0rc2"
+pants_version = "2.10.0"
 backend_packages = [
   "pants.backend.python",
-  "pants.backend.python.mixed_interpreter_constraints"
 ]
 
-[python-setup]
-interpreter_constraints = ["CPython==2.7.*"]
+[python]
+interpreter_constraints = ["CPython==3.9.5"]
