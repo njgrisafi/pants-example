@@ -17,3 +17,7 @@ packages = [
 python = "3.9.5"
 
 [tool.poetry.dev-dependencies]
+black = "22.3.0"
+isort = "5.10.1"
+mypy = "0.942"
+"pantsbuild.pants" = "2.10.0"

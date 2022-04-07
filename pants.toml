@@ -1,8 +1,26 @@
 [GLOBAL]
 pants_version = "2.10.0"
+pythonpath = ["%(buildroot)s/pants-plugins"]
 backend_packages = [
   "pants.backend.python",
+  "pants.backend.experimental.python.lint.autoflake",
+  "pants.backend.python.lint.black",
+  "pants.backend.python.lint.isort",
+  "pants.backend.python.lint.docformatter",
+  "pants.backend.python.lint.flake8",
+  "pants.backend.python.typecheck.mypy",
+  "custom_tailor",
+]
+use_deprecated_python_macros = false
+
+[source]
+root_patterns = [
+  "/",
+  "pants-plugins",
 ]
 
 [python]
 interpreter_constraints = ["CPython==3.9.5"]
+
+[anonymous-telemetry]
+enabled = false
