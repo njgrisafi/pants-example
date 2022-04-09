@@ -9,7 +9,7 @@ backend_packages = [
   "pants.backend.python.lint.docformatter",
   "pants.backend.python.lint.flake8",
   "pants.backend.python.typecheck.mypy",
-  "custom_tailor",
+  "build_file_defaults",
 ]
 use_deprecated_python_macros = false
 
@@ -22,7 +22,7 @@ root_patterns = [
 [python]
 interpreter_constraints = ["CPython==3.9.5"]
 
-[custom-tailor]
+[build-file-defaults]
 build_defaults = """
 {
   "app/module_1": {
