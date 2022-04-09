@@ -1,217 +1,127 @@
-from __future__ import annotations
-
-import os
-import re
+import tokenize
 from dataclasses import dataclass
-from pathlib import PurePath
-from typing import Iterable
+from io import BytesIO
+from typing import Any
 
-from pants.backend.python.dependency_inference.module_mapper import \
-    module_from_stripped_path
-from pants.backend.python.subsystems.setup import PythonSetup
-from pants.backend.python.target_types import (
-    PexBinary, PexEntryPointField, PythonSourcesGeneratorTarget,
-    PythonTestsGeneratingSourcesField, PythonTestsGeneratorTarget,
-    PythonTestUtilsGeneratingSourcesField, PythonTestUtilsGeneratorTarget,
-    ResolvedPexEntryPoint, ResolvePexEntryPointRequest)
-from pants.base.specs import AddressSpecs, AscendantAddresses
-from pants.core.goals.tailor import (AllOwnedSources, PutativeTarget,
-                                     PutativeTargets, PutativeTargetsRequest,
-                                     group_by_dir)
-from pants.engine.fs import DigestContents, PathGlobs, Paths
-from pants.engine.internals.selectors import Get, MultiGet
+from pants.engine.fs import FileContent
+from pants.engine.internals.parser import ParseError
 from pants.engine.rules import collect_rules, rule
-from pants.engine.target import Target, UnexpandedTargets
-from pants.engine.unions import UnionRule
-from pants.option.global_options import GlobalOptions
-from pants.source.filespec import Filespec, matches_filespec
-from pants.source.source_root import SourceRootsRequest, SourceRootsResult
 from pants.util.logging import LogLevel
+from pants.util.memo import memoized
+from pants.util.frozendict import FrozenDict
 
 
 @dataclass(frozen=True)
-class PutativePythonTargetsRequest(PutativeTargetsRequest):
-    pass
+class BuildFileUpdateRequest:
+    path: str
+    lines: tuple[str, ...]
+    defaults: FrozenDict[str, tuple[str, ...]]
+    target_types: tuple[str, ...] = ("python_sources",)
+
+    @memoized
+    def tokenize(self) -> list[tokenize.TokenInfo]:
+        _bytes_stream = BytesIO("\n".join(self.lines).encode("utf-8"))
+        try:
+            return list(tokenize.tokenize(_bytes_stream.readline))
+        except tokenize.TokenError as e:
+            raise ParseError(f"Failed to parse {self.path}: {e}")
+
+    def parse(self) -> list[dict[str, dict[str, Any]]]:
+        tokens = iter(self.tokenize())
+        def parse_body() -> list[dict[str, dict[str, Any]]]:
+            current_name = None
+            name_type = None
+            build_file_contents: list[dict[str, dict[str, Any]]] = []
+            curr_target = None
+            pants_target = None
+            for next_token in tokens:
+                if next_token.type is tokenize.NL or next_token.type is tokenize.NEWLINE or next_token.type is tokenize.ENCODING or next_token.type is tokenize.ENDMARKER:
+                    continue
+                if next_token.type is tokenize.NAME and "python_" in next_token.string:
+                    if pants_target is not None:
+                        build_file_contents.append(curr_target)
+                        name_type = None
+                        current_name = None
+                    pants_target = next_token.string
+                    curr_target = {next_token.string: {}}
+                    continue
+                if next_token.type is tokenize.NAME and next_token.string not in ["True", "False"]:
+                    curr_target[pants_target][next_token.string] = None
+                    current_name = next_token.string
+                    continue
+                if next_token.type is tokenize.OP and next_token.string in [",", "(", ")"]:
+                    continue
+                if next_token.type is tokenize.OP and next_token.string == "=":
+                    continue
+                if next_token.type is tokenize.OP and next_token.string == "[":
+                    name_type = "list"
+                    continue
+                if next_token.type is tokenize.OP and next_token.string == "]":
+                    name_type = None
+                    current_name = None
+                    continue
+                if name_type is None:
+                    curr_target[pants_target][current_name] = next_token.string
+                    current_name = None
+                    continue
+                if name_type == "list":
+                    curr_target[pants_target][current_name] = curr_target[pants_target][current_name] + [next_token.string.strip()] if curr_target[pants_target][current_name] is not None else [next_token.string]
+            build_file_contents.append(curr_target)
+            return build_file_contents
+
+        return parse_body()
+
+    def to_filecontent(self, build_file_body: list[dict[str, dict[str, Any]]]) -> FileContent:
+        lines = []
+        for content in build_file_body:
+            for key, value in content.items():
+                if len(value) == 0:
+                    lines.append(f"{key}()")
+                    continue
+                else:
+                    lines.append(
+                        f"{key}("
+                    )
+                for k, v in value.items():
+                    if isinstance(v, str):
+                        lines.append(f"    {k}={v},")
+                        continue
+                    lines.append(f"    {k}=[{', '.join(v)}],")
+                lines.append(")\n")
+        lines = "\n".join(lines)
+        return FileContent(self.path, lines.encode("utf-8"))
 
 
-def classify_source_files(paths: Iterable[str]) -> dict[type[Target], set[str]]:
-    """Returns a dict of target type -> files that belong to targets of that
-    type."""
-    tests_filespec = Filespec(includes=list(PythonTestsGeneratingSourcesField.default))
-    test_utils_filespec = Filespec(
-        includes=list(PythonTestUtilsGeneratingSourcesField.default)
-    )
+@dataclass(frozen=True)
+class BuildFileUpdateResult:
+    file_content: FileContent
+    changes: tuple[str, ...]
 
-    path_to_file_name = {path: os.path.basename(path) for path in paths}
-    test_file_names = set(
-        matches_filespec(tests_filespec, paths=path_to_file_name.values())
-    )
-    test_util_file_names = set(
-        matches_filespec(test_utils_filespec, paths=path_to_file_name.values())
-    )
-
-    test_files = {
-        path
-        for path, file_name in path_to_file_name.items()
-        if file_name in test_file_names
-    }
-    test_util_files = {
-        path
-        for path, file_name in path_to_file_name.items()
-        if file_name in test_util_file_names
-    }
-    library_files = set(paths) - test_files - test_util_files
-    return {
-        PythonTestsGeneratorTarget: test_files,
-        PythonTestUtilsGeneratorTarget: test_util_files,
-        PythonSourcesGeneratorTarget: library_files,
-    }
+    def to_file_content(self) -> FileContent:
+        lines = "\n".join(self.lines) + "\n"
+        return FileContent(self.path, lines.encode("utf-8"))
 
 
-# The order "__main__" == __name__ would also technically work, but is very
-# non-idiomatic, so we ignore it.
-_entry_point_re = re.compile(
-    rb"^if __name__ +== +['\"]__main__['\"]: *(#.*)?$", re.MULTILINE
-)
+@rule(desc="Lint file for pre-checks", level=LogLevel.DEBUG)
+async def update_build_file(
+    build_file_req: BuildFileUpdateRequest,
+) -> BuildFileUpdateResult:
+    build_file_contents = build_file_req.parse()
 
-
-def is_entry_point(content: bytes) -> bool:
-    # Identify files that look like entry points.  We use a regex for speed, as it will catch
-    # almost all correct cases in practice, with extremely rare false positives (we will only
-    # have a false positive if the matching code is in a multiline string indented all the way
-    # to the left). Looking at the ast would be more correct, technically, but also more laborious,
-    # trickier to implement correctly for different interpreter versions, and much slower.
-    return _entry_point_re.search(content) is not None
-
-
-@rule(level=LogLevel.DEBUG, desc="Determine candidate Python targets to create")
-async def find_putative_targets(
-    req: PutativePythonTargetsRequest,
-    all_owned_sources: AllOwnedSources,
-    python_setup: PythonSetup,
-    global_options: GlobalOptions,
-) -> PutativeTargets:
-    # Find library/test/test_util targets.
-
-    all_py_files_globs: PathGlobs = req.search_paths.path_globs("*.py")
-    all_py_files = await Get(Paths, PathGlobs, all_py_files_globs)
-    unowned_py_files = set(all_py_files.files) - set(all_owned_sources)
-    classified_unowned_py_files = classify_source_files(unowned_py_files)
-    pts = []
-    for tgt_type, paths in classified_unowned_py_files.items():
-        for dirname, filenames in group_by_dir(paths).items():
-            name: str | None
-            if issubclass(tgt_type, PythonTestsGeneratorTarget):
-                name = "tests"
-            elif issubclass(tgt_type, PythonTestUtilsGeneratorTarget):
-                name = "test_utils"
-            else:
-                name = None
-            if (
-                python_setup.tailor_ignore_solitary_init_files
-                and tgt_type == PythonSourcesGeneratorTarget
-                and filenames == {"__init__.py"}
-            ):
+    for content in build_file_contents:
+        for target_type, options in build_file_req.defaults.items():
+            if target_type not in content:
                 continue
-            pts.append(
-                PutativeTarget.for_target_type(
-                    tgt_type,
-                    path=dirname,
-                    name=name,
-                    triggering_sources=sorted(filenames),
-                )
-            )
+            for option in options:
+                name, value = option.split("=")
+                content[target_type][name] = value
 
-    if python_setup.tailor_requirements_targets:
-        # Find requirements files.
-        all_requirements_files = await Get(
-            Paths, PathGlobs, req.search_paths.path_globs("*requirements*.txt")
-        )
-        unowned_requirements_files = set(all_requirements_files.files) - set(
-            all_owned_sources
-        )
-        for req_file in unowned_requirements_files:
-            path, name = os.path.split(req_file)
-            pts.append(
-                PutativeTarget(
-                    path=path,
-                    name=name,
-                    type_alias="python_requirements",
-                    triggering_sources=[req_file],
-                    owned_sources=[req_file],
-                    addressable=not global_options.options.use_deprecated_python_macros,
-                    kwargs={} if name == "requirements.txt" else {"source": name},
-                )
-            )
-
-    if python_setup.tailor_pex_binary_targets:
-        # Find binary targets.
-
-        # Get all files whose content indicates that they are entry points.
-        digest_contents = await Get(DigestContents, PathGlobs, all_py_files_globs)
-        entry_points = [
-            file_content.path
-            for file_content in digest_contents
-            if is_entry_point(file_content.content)
-        ]
-
-        # Get the modules for these entry points.
-        src_roots = await Get(
-            SourceRootsResult,
-            SourceRootsRequest,
-            SourceRootsRequest.for_files(entry_points),
-        )
-        module_to_entry_point = {}
-        for entry_point in entry_points:
-            entry_point_path = PurePath(entry_point)
-            src_root = src_roots.path_to_root[entry_point_path]
-            stripped_entry_point = entry_point_path.relative_to(src_root.path)
-            module = module_from_stripped_path(stripped_entry_point)
-            module_to_entry_point[module] = entry_point
-
-        # Get existing binary targets for these entry points.
-        entry_point_dirs = {
-            os.path.dirname(entry_point) for entry_point in entry_points
-        }
-        possible_existing_binary_targets = await Get(
-            UnexpandedTargets,
-            AddressSpecs(AscendantAddresses(d) for d in entry_point_dirs),
-        )
-        possible_existing_binary_entry_points = await MultiGet(
-            Get(
-                ResolvedPexEntryPoint,
-                ResolvePexEntryPointRequest(t[PexEntryPointField]),
-            )
-            for t in possible_existing_binary_targets
-            if t.has_field(PexEntryPointField)
-        )
-        possible_existing_entry_point_modules = {
-            rep.val.module for rep in possible_existing_binary_entry_points if rep.val
-        }
-        unowned_entry_point_modules = (
-            module_to_entry_point.keys() - possible_existing_entry_point_modules
-        )
-
-        # Generate new targets for entry points that don't already have one.
-        for entry_point_module in unowned_entry_point_modules:
-            entry_point = module_to_entry_point[entry_point_module]
-            path, fname = os.path.split(entry_point)
-            name = os.path.splitext(fname)[0]
-            pts.append(
-                PutativeTarget.for_target_type(
-                    target_type=PexBinary,
-                    path=path,
-                    name=name,
-                    triggering_sources=tuple(),
-                    kwargs={"entry_point": fname},
-                )
-            )
-
-    return PutativeTargets(pts)
+    return BuildFileUpdateResult(
+        file_content=build_file_req.to_filecontent(build_file_body=build_file_contents), changes=tuple()
+    )
 
 
 def rules():
     return [
         *collect_rules(),
-        UnionRule(PutativeTargetsRequest, PutativePythonTargetsRequest),
     ]

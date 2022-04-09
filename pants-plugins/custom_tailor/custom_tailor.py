@@ -1,14 +1,16 @@
-from typing import Callable, Iterable
+import os
+from typing import Iterable
 
-from pants.backend.python.target_types import (PythonSourceTarget,
-                                               PythonTestTarget)
 from pants.engine.console import Console
-from pants.engine.fs import Workspace
+from pants.engine.fs import DigestContents, PathGlobs, Workspace, Digest, CreateDigest
 from pants.engine.goal import Goal, GoalSubsystem, LineOriented
+from pants.engine.internals.build_files import BuildFileOptions
+from pants.engine.internals.selectors import Get, MultiGet
 from pants.engine.rules import Rule, collect_rules, goal_rule
-from pants.engine.target import (RegisteredTargetTypes, Target, Targets,
-                                 UnrecognizedTargetTypeException)
-from pants.util.filtering import and_filters, create_filters
+from pants.engine.target import Targets
+from pants.util.frozendict import FrozenDict
+
+from .rules import BuildFileUpdateRequest, BuildFileUpdateResult
 
 
 class CustomTailorSubsystem(LineOriented, GoalSubsystem):
@@ -22,7 +24,13 @@ class CustomTailorSubsystem(LineOriented, GoalSubsystem):
             "--target-types",
             type=list,
             metavar="[+-]type1,type2,...",
+            default=["python_source"],
             help="Run on these target types, only `python_tests` and `python_sources` values are accepted.",
+        )
+        register(
+            "--build-defaults",
+            type=dict,
+            help="Default settings for BUILD files under a given directory",
         )
         register(
             "--ignored-files",
@@ -36,6 +44,10 @@ class CustomTailorSubsystem(LineOriented, GoalSubsystem):
         return self.options.target_types
 
     @property
+    def build_defaults(self) -> dict[str, dict[str, tuple[str, ...]]]:
+        return self.options.build_defaults
+
+    @property
     def ignored_files(self) -> list[str]:
         return self.options.ignored_files
 
@@ -44,37 +56,63 @@ class CustomTailor(Goal):
     subsystem_cls = CustomTailorSubsystem
 
 
-TargetFilter = Callable[[Target], bool]
-allowed_target_types = RegisteredTargetTypes.create(
-    {tgt_type for tgt_type in [PythonSourceTarget, PythonTestTarget]}
-)
-
-
 @goal_rule
 async def custom_tailor(
     console: Console,
     custom_tailor_subsystem: CustomTailorSubsystem,
+    build_file_options: BuildFileOptions,
     targets: Targets,
     workspace: Workspace,
 ) -> CustomTailor:
-    # Filter targets to run on
-    def filter_target_type(target_type: str) -> TargetFilter:
-        if target_type not in allowed_target_types.aliases:
-            raise UnrecognizedTargetTypeException(target_type, allowed_target_types)
-        return lambda tgt: tgt.alias == target_type
-
-    anded_filter: TargetFilter = and_filters(
-        [
-            *(create_filters(custom_tailor_subsystem.target_types, filter_target_type)),
-        ]
+    globs: list[str] = []
+    for key in custom_tailor_subsystem.build_defaults:
+        globs.extend(
+            [*(os.path.join(key, "**", p) for p in build_file_options.patterns)]
+        )
+    all_build_files = await Get(
+        DigestContents,
+        PathGlobs(globs=globs),
     )
+    build_files_to_update: dict[str, list[BuildFileUpdateRequest]] = {}
+    for key in custom_tailor_subsystem.build_defaults:
+        for build_file_content in all_build_files:
+            if key not in build_file_content.path:
+                continue
+            if key not in build_files_to_update:
+                build_files_to_update[key] = [
+                    BuildFileUpdateRequest(
+                        path=build_file_content.path,
+                        lines=tuple(
+                            build_file_content.content.decode("utf-8").splitlines()
+                        ),
+                        defaults=FrozenDict(custom_tailor_subsystem.build_defaults[key]),
+                    )
+                ]
+                continue
+            build_files_to_update[key].append(
+                BuildFileUpdateRequest(
+                    path=build_file_content.path,
+                    lines=tuple(
+                        build_file_content.content.decode("utf-8").splitlines()
+                    ),
+                    defaults=FrozenDict(custom_tailor_subsystem.build_defaults[key]),
+                )
+            )
+    get_reqs: list[Get] = []
+    for build_files in build_files_to_update.values():
+        get_reqs.extend(
+            [
+                Get(BuildFileUpdateResult, BuildFileUpdateRequest, build_file)
+                for build_file in build_files
+            ]
+        )
 
-    filtered_targets: list[Target] = [
-        target for target in targets if anded_filter(target)
-    ]
-
-    if len(filtered_targets) == 0:
-        return CustomTailor(exit_code=0)
+    res: tuple[BuildFileUpdateResult, ...] = await MultiGet(get_reqs)
+    for r in res:
+        digest = await Get(Digest, CreateDigest([r.file_content]))
+        workspace.write_digest(
+            digest=digest
+        )
     return CustomTailor(exit_code=0)
 
 

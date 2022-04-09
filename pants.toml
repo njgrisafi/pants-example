@@ -22,5 +22,18 @@ root_patterns = [
 [python]
 interpreter_constraints = ["CPython==3.9.5"]
 
+[custom-tailor]
+build_defaults = """
+{
+  "app/module_1": {
+    "python_sources": ("skip_black=True", "skip_isort=False",)
+  },
+  "app/module_2": {
+    "python_sources": ("skip_black=True", "skip_isort=True",),
+    "python_tests": ("skip_black=False", "skip_isort=False", "skip_flake8=False",)
+  },
+}
+"""
+
 [anonymous-telemetry]
 enabled = false
