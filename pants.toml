@@ -1,8 +1,16 @@
 [GLOBAL]
 pants_version = "2.7.0"
+pythonpath = ["%(buildroot)s/pants-plugins"]
 backend_packages = [
   "pants.backend.python",
+  "custom_infer",
 ]
 
 [python-setup]
 interpreter_constraints = ["CPython==3.9.5"]
+
+
+[custom-infer]
+require_tests = [
+  "api.py"
+]
