@@ -57,7 +57,6 @@ def test_infer_python_dependencies_tests_dependencies() -> None:
 
     assert run_dep_inference(Address("app/module_1/tests", relative_file_path="test_api.py")) == InferredDependencies(
         [
-            Address("app/module_1/tests", relative_file_path="test_api.py"),
             Address("app/module_1", relative_file_path="api.py"),
         ],
         sibling_dependencies_inferrable=False,
@@ -66,7 +65,6 @@ def test_infer_python_dependencies_tests_dependencies() -> None:
 
     assert run_dep_inference(Address("app/module_2/tests/unit_tests", relative_file_path="test_api.py")) == InferredDependencies(
         [
-            Address("app/module_2/tests/unit_tests", relative_file_path="test_api.py"),
             Address("app/module_2", relative_file_path="api.py"),
         ],
         sibling_dependencies_inferrable=False,
@@ -74,7 +72,6 @@ def test_infer_python_dependencies_tests_dependencies() -> None:
 
     assert run_dep_inference(Address("app/module_3/tests/unit_tests", relative_file_path="test_api.py")) == InferredDependencies(
         [
-            Address("app/module_3/tests/unit_tests", relative_file_path="test_api.py"),
             Address("app/module_3/a/b", relative_file_path="api.py"),
         ],
         sibling_dependencies_inferrable=False,

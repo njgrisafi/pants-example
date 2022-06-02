@@ -6,7 +6,7 @@ from pants.backend.python.util_rules.ancestor_files import (
     AncestorFiles,
     AncestorFilesRequest,
 )
-from pants.engine.addresses import Address
+from pants.engine.addresses import Address, AddressInput, UnparsedAddressInputs, Addresses
 from pants.engine.fs import DigestContents, PathGlobs
 from pants.engine.internals.graph import Owners, OwnersRequest
 from pants.engine.rules import Get, MultiGet, Rule, SubsystemRule, rule
@@ -90,7 +90,8 @@ async def infer_python_dependencies_tests_dependencies(
         )
         if tests_digest.count == 0:
             continue
-        addresses.append(address)
+        res = await Get(Addresses, UnparsedAddressInputs(values=[x.path for x in tests_digest], owning_address=None))
+        addresses.extend(res)
     return InferredDependencies(dependencies=addresses, sibling_dependencies_inferrable=False)
 
 
