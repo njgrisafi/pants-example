@@ -14,6 +14,10 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "3.9.5"
+python = ">=3.7,<3.10"
 
 [tool.poetry.dev-dependencies]
+pytest = "*"
+"pantsbuild.pants" = "2.8.0"
+"pantsbuild.pants.testutil" = "2.8.0"
+ipykernel = "^6.15.0"
