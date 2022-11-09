@@ -3,6 +3,7 @@ pants_version = "2.10.0"
 backend_packages = [
   "pants.backend.python",
 ]
+use_deprecated_python_macros = false
 
 [python]
 interpreter_constraints = ["CPython==3.9.5"]
