@@ -1,9 +1,14 @@
 [GLOBAL]
-pants_version = "2.10.0"
+pants_version = "2.14.0"
 backend_packages = [
   "pants.backend.python",
 ]
-use_deprecated_python_macros = false
 
 [python]
 interpreter_constraints = ["CPython==3.9.5"]
+
+[python-infer]
+unowned_dependency_behavior = "error"
+
+[anonymous-telemetry]
+enabled = false
