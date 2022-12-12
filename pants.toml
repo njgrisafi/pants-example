@@ -4,11 +4,14 @@ pythonpath = ["%(buildroot)s/pants-plugins"]
 backend_packages = [
   "pants.backend.plugin_development",
   "pants.backend.python",
+  "pants.backend.experimental.python.lint.autoflake",
+  "pants.backend.python.lint.isort",
+  "pants.backend.python.lint.black",
   "changer"
 ]
 
 [python]
-interpreter_constraints = ["CPython==3.9.5"]
+interpreter_constraints = ["CPython>=3.9"]
 
 [python-infer]
 unowned_dependency_behavior = "error"

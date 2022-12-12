@@ -1,4 +1,2 @@
-
-
 def test():
     return "test"

@@ -1,9 +1,7 @@
-from typing import Iterable
-
-from changer import rules as changer_rules
 from changer import subsystem
+from changer.git import git_rules
 from pants.engine.rules import Rule
 
 
-def rules() -> Iterable[Rule]:
-    return [*subsystem.rules(), *changer_rules.rules()]
+def rules() -> list[Rule]:
+    return [*subsystem.rules(), *git_rules.rules()]
