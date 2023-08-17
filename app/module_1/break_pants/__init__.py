@@ -1,1 +1,1 @@
-from . import example
+from ._example import *
