@@ -1,1 +1,1 @@
-from ._example import *
+from module_2.break_pants import *
